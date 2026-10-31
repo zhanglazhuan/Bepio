@@ -1,0 +1,8 @@
+cmake_minimum_required(VERSION 3.16)
+set(IDF_TARGET "esp32s3" CACHE STRING "Microphone test MCU")
+set(BEPIO_AUDIO_SOFT_I2C OFF CACHE BOOL "Optional software I2C comparison")
+set(BEPIO_AUDIO_SAMPLE_BITS 16 CACHE STRING "Microphone diagnostic sample width")
+set(EXTRA_COMPONENT_DIRS "../../boards/esp32s3" "../t_audio/drivers/audio_board")
+include($ENV{IDF_PATH}/tools/cmake/project.cmake)
+idf_build_set_property(MINIMAL_BUILD ON)
+project(t_microphone)

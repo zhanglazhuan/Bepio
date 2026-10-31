@@ -1,0 +1,5 @@
+#ifndef BEPIO_SETTINGS_WIFI_CONNECT_H_
+#define BEPIO_SETTINGS_WIFI_CONNECT_H_
+void bepio_settings_wifi_connect_render(void);
+void bepio_settings_wifi_connect_refresh(void);
+#endif

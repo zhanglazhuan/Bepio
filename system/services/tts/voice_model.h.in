@@ -1,0 +1,6 @@
+#ifndef BEPIO_TTS_VOICE_MODEL_H_
+#define BEPIO_TTS_VOICE_MODEL_H_
+#include <stdint.h>
+#define BEPIO_TTS_VOICE_BYTES @VOICE_BYTES@
+static const uint8_t bepio_tts_voice_sha256[32] = {@VOICE_SHA256_BYTES@};
+#endif

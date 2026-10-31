@@ -1,0 +1,6 @@
+Pillow
+requests
+fonttools
+brotli
+pypng
+lz4

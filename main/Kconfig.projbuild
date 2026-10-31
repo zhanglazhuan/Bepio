@@ -1,0 +1,80 @@
+menu "Bepio"
+
+config BEPIO_UI_OPTIMIZE
+	bool "Optimize graphics components for responsiveness (-O2)"
+	default y
+	help
+	  Optimize LVGL, the GUI adapter and LCD components even when the rest
+	  of ESP-IDF uses debug optimization. Keeps assertions and symbols.
+	  Disable when stepping through graphics code in a debugger.
+
+
+config BEPIO_CONSOLE
+	bool "Optional serial command console (headless diagnostics)"
+	default n
+
+config BEPIO_MN316
+	bool "Probe MN316 over UART1 at startup"
+	default y
+
+config BEPIO_MAX_APPS
+	int "Maximum registered applications"
+	range 1 25
+	default 8
+
+config BEPIO_APP_SETTINGS
+	bool "Settings application"
+	default y
+
+config BEPIO_SETTINGS_SHELL
+	bool "Settings serial shell commands"
+	depends on BEPIO_APP_SETTINGS && BEPIO_CONSOLE
+	default y
+
+config BEPIO_APP_CONTACTS
+	bool "Contacts application"
+	default y
+
+config BEPIO_CONTACTS_CAPACITY
+	int "Maximum contacts stored in RAM"
+	depends on BEPIO_APP_CONTACTS
+	range 1 128
+	default 32
+
+config BEPIO_CONTACTS_SHELL
+	bool "Contacts serial shell commands"
+	depends on BEPIO_APP_CONTACTS && BEPIO_CONSOLE
+	default y
+
+config BEPIO_APP_MESSAGES
+	bool "Messages application and in-memory messaging service"
+	default y
+
+config BEPIO_MESSAGES_INBOX_CAPACITY
+	int "Maximum inbox messages"
+	depends on BEPIO_APP_MESSAGES
+	range 1 40
+	default 20
+
+config BEPIO_MESSAGES_OUTBOX_CAPACITY
+	int "Maximum outbox messages including drafts"
+	depends on BEPIO_APP_MESSAGES
+	range 1 40
+	default 20
+
+config BEPIO_MESSAGES_SHELL
+	bool "Messages serial shell commands"
+	depends on BEPIO_APP_MESSAGES && BEPIO_CONSOLE
+	default y
+
+config BEPIO_MESSAGES_DEMO
+	bool "Seed simulated Messages conversations"
+	depends on BEPIO_APP_MESSAGES
+	default y
+
+config BEPIO_APP_CHAT
+	bool "Chat application"
+	depends on BEPIO_APP_CONTACTS && BEPIO_APP_MESSAGES
+	default y
+
+endmenu

@@ -1,0 +1,1 @@
+idf_component_register(SRCS "bepio_console.c" "bepio_store.c" "bepio_device_info.c" "bepio_storage_info.c" "bepio_message_file.c" INCLUDE_DIRS "." REQUIRES pthread log console PRIV_REQUIRES nvs_flash esp_app_format esp_hw_support esp_system spi_flash esp_partition app_update bootloader_support spiffs)

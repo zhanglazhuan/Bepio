@@ -1,0 +1,9 @@
+cmake_minimum_required(VERSION 3.16)
+set(IDF_TARGET "esp32s3" CACHE STRING "TTS test MCU")
+set(EXTRA_COMPONENT_DIRS
+    "../../boards/esp32s3"
+    "../../system/services/tts"
+    "../t_audio/drivers/audio_board")
+include($ENV{IDF_PATH}/tools/cmake/project.cmake)
+idf_build_set_property(MINIMAL_BUILD ON)
+project(t_tts)

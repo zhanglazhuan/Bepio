@@ -1,0 +1,17 @@
+set(sources)
+set(dependencies uilv lvgl platform appmgr)
+if(CONFIG_BEPIO_APP_CONTACTS)
+    list(APPEND sources "app.c" "model.c" "view.c" "controller.c"
+        "pages/contacts_page_common.c"
+        "pages/contacts_list.c"
+        "pages/contacts_detail.c"
+        "pages/contacts_edit.c"
+        "pages/contacts_delete_confirm.c"
+        "pages/contacts_discard_confirm.c"
+    )
+    if(CONFIG_BEPIO_CONTACTS_SHELL)
+        list(APPEND sources "shell.c")
+    endif()
+endif()
+idf_component_register(SRCS ${sources} INCLUDE_DIRS "../.." "." REQUIRES ${dependencies})
+

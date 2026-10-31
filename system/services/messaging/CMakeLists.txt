@@ -1,0 +1,5 @@
+set(sources)
+if(CONFIG_BEPIO_APP_MESSAGES)
+    list(APPEND sources "messaging.c")
+endif()
+idf_component_register(SRCS ${sources} INCLUDE_DIRS "." REQUIRES platform account)

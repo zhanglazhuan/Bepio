@@ -1,0 +1,17 @@
+/build*/
+/archive/
+/refer/
+/.venv/
+/.west/
+__pycache__/
+*.pyc
+
+# ESP-IDF generated configuration and managed components
+sdkconfig
+sdkconfig.old
+sdkconfig.demo.local
+sdkconfig.demo.local.old
+managed_components/
+dependencies.lock
+**/build/
+**/build-*/
