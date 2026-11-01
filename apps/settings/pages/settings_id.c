@@ -30,12 +30,13 @@ static void submit(lv_event_t *event)
 		ret == -ENETDOWN ? "Offline: backend connection required" :
 		ret == -EAGAIN ? "One change per 24 hours" :
 		ret == -EBUSY ? "A request is already pending" :
-		ret == -EALREADY ? "This is your current ID" : "Use 4-32 lowercase letters, digits or _");
+		ret == -EALREADY ? "This is your current ID" : "Use 1-24 digits");
 	bepio_settings_id_refresh(&ctx->base);
 }
 static void focus(lv_event_t *event)
 {
 	id_context_t *ctx = lv_event_get_user_data(event);
+	lv_keyboard_set_mode(ctx->keyboard, LV_KEYBOARD_MODE_NUMBER);
 	lv_keyboard_set_textarea(ctx->keyboard, lv_event_get_target_obj(event));
 	lv_obj_remove_flag(ctx->keyboard, LV_OBJ_FLAG_HIDDEN);
 }
@@ -69,7 +70,8 @@ lv_obj_t *bepio_settings_id_build(void *app, void *payload)
 	ctx->entry = lv_textarea_create(root);
 	lv_obj_set_width(ctx->entry, lv_pct(100));
 	lv_textarea_set_one_line(ctx->entry, true);
-	lv_textarea_set_max_length(ctx->entry, BEPIO_ACCOUNT_ID_MAX);
+	lv_textarea_set_max_length(ctx->entry, 24);
+	lv_textarea_set_accepted_chars(ctx->entry, "0123456789");
 	lv_textarea_set_placeholder_text(ctx->entry, "New account ID");
 	lv_obj_add_event_cb(ctx->entry, focus, LV_EVENT_FOCUSED, ctx);
 	bepio_ui_button(root, "Confirm ID change", 0, 0, 180, 32, submit, ctx);

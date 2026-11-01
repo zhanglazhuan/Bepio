@@ -23,8 +23,8 @@ Settings 验证（原生 USB shell）：
 Contacts 验证（原生 USB shell）：
 
 1. 从 Settings 主页执行 `settings back`，然后 `contacts list`，应显示空列表。
-2. 执行 `contacts add "妈妈" +8613800000000`，记录返回 ID。
-3. 用 `contacts show <id>` 查看，再用 `contacts update <id> "母亲" +8613800000001` 修改。
+2. 执行 `contacts add "妈妈" 8613800000000`，记录返回 ID。
+3. 用 `contacts show <id>` 查看，再用 `contacts update <id> "母亲" 8613800000001` 修改。
 4. 重复添加相同号码、输入空姓名或带字母的号码，应拒绝且不改变原记录。
 5. 从详情连续执行两次 `contacts back`，应先返回列表、再退出；重新 list 数据仍保留。
 6. 执行 `contacts delete <id>`，确认该记录消失，其他 ID 不变；删除未知 ID 应报错。

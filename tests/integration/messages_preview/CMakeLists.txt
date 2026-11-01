@@ -7,6 +7,7 @@ set(CONFIG_LV_BUILD_DEMOS OFF CACHE BOOL "" FORCE)
 set(CONFIG_LV_USE_THORVG_INTERNAL OFF CACHE BOOL "" FORCE)
 add_subdirectory("${BEPIO_ROOT}/managed_components/lvgl__lvgl" lvgl)
 add_executable(messages_preview main.c
+	"${BEPIO_ROOT}/system/uilv/imgs/icon_28x28/ic_send_28.c"
     "${BEPIO_ROOT}/apps/messages/view.c"
     "${BEPIO_ROOT}/apps/messages/pages/messages_page_common.c"
     "${BEPIO_ROOT}/apps/messages/pages/messages_list.c"

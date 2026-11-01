@@ -14,10 +14,11 @@ struct messages_page_context {
 	int (*sync)(messages_page_context_t *ctx);
 };
 
-enum { ACT_NEW = 1, ACT_BACK, ACT_REPLY, ACT_DELETE,
+enum { ACT_NEW = 1, ACT_REPLY, ACT_DELETE,
 	ACT_CONFIRM, ACT_CANCEL, ACT_SAVE, ACT_SEND, ACT_DISCARD, ACT_EDIT, ACT_RETRY };
 
 messages_page_context_t *messages_page_alloc(size_t size, messages_view_t *view);
-lv_obj_t *messages_page_begin(messages_page_context_t *ctx, const char *title);
-lv_obj_t *messages_page_finish(messages_page_context_t *ctx);
+void messages_page_prepare(messages_page_context_t *ctx, Page page, const char *title);
+lv_obj_t *messages_page_finish(messages_view_t *view, Page page, messages_page_context_t *ctx);
+void messages_page_back(lv_event_t *event);
 #endif

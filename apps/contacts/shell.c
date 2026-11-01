@@ -8,7 +8,7 @@ static int report_error(const bepio_console_context_t *shell, int ret)
 	const char *message;
 
 	switch (ret) {
-	case -EINVAL: message = "Invalid name, phone or ID"; break;
+	case -EINVAL: message = "Invalid name or numeric device ID"; break;
 	case -ENOENT: message = "Contact not found"; break;
 	case -EEXIST: message = "Phone number already exists"; break;
 	case -ENOSPC: message = "Contact list is full"; break;
@@ -175,7 +175,7 @@ static int back_contacts(const bepio_console_context_t *shell, size_t argc, char
 BEPIO_COMMANDS(contacts_commands,
 	BEPIO_COMMAND(list, NULL, "Open contact list", list_contacts, 1, 0),
 	BEPIO_COMMAND(show, NULL, "Show <id>", show_contact, 2, 0),
-	BEPIO_COMMAND(add, NULL, "Add <name> <phone>; quote names with spaces", add_contact, 3, 0),
+	BEPIO_COMMAND(add, NULL, "Add <name> <numeric_id>; quote names with spaces", add_contact, 3, 0),
 	BEPIO_COMMAND(update, NULL, "Update <id> <name> <phone>", update_contact, 4, 0),
 	BEPIO_COMMAND(delete, NULL, "Delete <id>", delete_contact, 2, 0),
 	BEPIO_COMMAND(back, NULL, "Back to list, then exit", back_contacts, 1, 0),

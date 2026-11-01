@@ -116,7 +116,7 @@ static void input(const char *field, const char *value)
 static int message_requests;
 static int capture_message(const char *phone, const char *name)
 {
-	assert(!strcmp(phone, "+12025550101"));
+	assert(!strcmp(phone, "12025550101"));
 	assert(!strcmp(name, "Ava Chen"));
 	message_requests++;
 	return 0;
@@ -141,7 +141,7 @@ int main(int argc, char **argv)
 		char name[24], phone[24];
 		uint32_t id;
 		snprintf(name, sizeof(name), i == 0 ? "Ava Chen" : "Person %u", i);
-		snprintf(phone, sizeof(phone), "+120255501%02u", i + 1);
+		snprintf(phone, sizeof(phone), "120255501%02u", i + 1);
 		assert(contacts_model_add(c->model, name, phone, &id) == 0);
 	}
 	assert(bepio_app_manager_exit_app() == 0);
@@ -198,24 +198,63 @@ int main(int argc, char **argv)
 	assert(bounds.y1 >= LV_STATUS_BAR_HEIGHT + LV_PAGE_HEADER_HEIGHT &&
 	       bounds.y2 < 240);
 	assert(find_text(active_page().header, "Edit Contact")); screenshot("contacts-edit");
-	lv_obj_t *phone = find_field(root, "Mobile number");
+	lv_obj_t *phone = find_field(root, "Device ID / phone");
 	lv_obj_send_event(phone, LV_EVENT_FOCUSED, NULL);
-	lv_textarea_set_text(phone, ""); key(kb, "+"); key(kb, "1");
-	assert(!strcmp(lv_textarea_get_text(phone), "+1"));
-	screenshot("contacts-phone-keyboard");
-	input("Name", "Ava Updated"); input("Mobile number", "+12025550142");
+	lv_textarea_set_text(phone, ""); key(kb, "1");
+	assert(!strcmp(lv_textarea_get_text(phone), "1"));
+	lv_textarea_set_text(phone, "100000000000002");
+	assert(!strcmp(lv_textarea_get_text(phone), "100000000000002"));
+	screenshot("contacts-device-id");
+	input("Name", "Ava Updated"); input("Device ID / phone", "12025550142");
 	click("Save"); assert(c->model->flow.page == CONTACTS_PAGE_DETAIL && !strcmp(c->model->entries[0].name, "Ava Updated"));
-	click(LV_SYMBOL_EDIT); input("Mobile number", c->model->entries[1].phone); click("Save");
+	click(LV_SYMBOL_EDIT); input("Device ID / phone", c->model->entries[1].phone); click("Save");
 	assert(c->model->flow.page == CONTACTS_PAGE_EDIT && find_text(root, "Number already exists"));
-	screenshot("contacts-error"); click("Cancel"); assert(c->model->flow.page == CONTACTS_PAGE_DISCARD_CONFIRM);
-	assert(find_text(active_page().header, "Discard Changes")); screenshot("contacts-discard"); click("Keep editing"); assert(c->model->flow.page == CONTACTS_PAGE_EDIT);
+	screenshot("contacts-error"); click("Cancel");
+	assert(c->model->flow.page == CONTACTS_PAGE_EDIT && c->model->flow.discard_pending);
+	assert(find_text(active_page().header, "Edit Contact"));
+	assert(find_text(lv_screen_active(), "Discard changes?"));
+	screenshot("contacts-discard"); click("Keep editing");
+	assert(c->model->flow.page == CONTACTS_PAGE_EDIT && !c->model->flow.discard_pending);
+	assert(!find_text(lv_screen_active(), "Discard changes?"));
+	assert(!strcmp(lv_textarea_get_text(find_field(root, "Device ID / phone")), c->model->entries[1].phone));
+	lv_obj_send_event(lv_obj_get_child(active_page().header, 0), LV_EVENT_CLICKED, NULL);
+	assert(c->model->flow.discard_pending && c->model->flow.page == CONTACTS_PAGE_EDIT);
+	lv_obj_t *discard_header = find_text(lv_screen_active(), "Discard changes?"); assert(discard_header);
+	lv_obj_t *discard_overlay = lv_obj_get_parent(lv_obj_get_parent(lv_obj_get_parent(discard_header)));
+	lv_obj_send_event(discard_overlay, LV_EVENT_CLICKED, NULL);
+	lv_timer_handler();
+	assert(!c->model->flow.discard_pending && c->model->flow.page == CONTACTS_PAGE_EDIT);
 	click("Cancel"); click("Discard changes"); assert(c->model->flow.page == CONTACTS_PAGE_DETAIL);
 	lv_obj_send_event(lv_obj_get_child(active_page().header, 0), LV_EVENT_CLICKED, NULL); click(LV_SYMBOL_PLUS); assert(find_text(active_page().header, "New Contact")); screenshot("contacts-new");
-	input("Name", "Test Person"); input("Mobile number", "+"); click("Save");
+	input("Name", "Test Person"); input("Device ID / phone", "+"); click("Save");
 	assert(c->model->flow.page == CONTACTS_PAGE_EDIT && c->model->count == 8);
-	input("Mobile number", "+12025550199"); click("Save");
+	input("Device ID / phone", "100000000000002"); click("Save");
 	assert(c->model->flow.page == CONTACTS_PAGE_DETAIL && c->model->count == 9);
-	click(LV_SYMBOL_TRASH); assert(find_text(active_page().header, "Delete Contact")); screenshot("contacts-delete"); click("Keep contact"); assert(c->model->count == 9);
+	click(LV_SYMBOL_TRASH);
+	assert(c->model->flow.page == CONTACTS_PAGE_DETAIL && c->model->flow.delete_pending);
+	assert(find_text(active_page().header, "Contact Detail"));
+	assert(find_text(lv_screen_active(), "Delete contact?"));
+	lv_obj_t *sheet_panel = lv_obj_get_parent(lv_obj_get_parent(find_text(lv_screen_active(), "Delete contact?")));
+	lv_obj_update_layout(lv_screen_active());
+	lv_area_t sheet_bounds; lv_obj_get_coords(sheet_panel, &sheet_bounds);
+	assert(sheet_bounds.y2 == 239 && sheet_bounds.y1 > 0);
+	lv_area_t keep_bounds, delete_bounds;
+	lv_obj_get_coords(lv_obj_get_parent(find_text(sheet_panel, "Keep contact")), &keep_bounds);
+	lv_obj_get_coords(lv_obj_get_parent(find_text(sheet_panel, "Delete contact")), &delete_bounds);
+	assert(keep_bounds.y1 == delete_bounds.y1 && keep_bounds.y2 == delete_bounds.y2);
+	assert(keep_bounds.x2 < delete_bounds.x1);
+	assert(keep_bounds.x1 >= sheet_bounds.x1 && delete_bounds.x2 <= sheet_bounds.x2);
+	screenshot("contacts-delete");
+	click("Keep contact");
+	assert(c->model->count == 9 && !c->model->flow.delete_pending);
+	assert(c->model->flow.page == CONTACTS_PAGE_DETAIL);
+	assert(!find_text(lv_screen_active(), "Delete contact?"));
+	click(LV_SYMBOL_TRASH);
+	sheet_panel = lv_obj_get_parent(lv_obj_get_parent(find_text(lv_screen_active(), "Delete contact?")));
+	lv_obj_send_event(lv_obj_get_parent(sheet_panel), LV_EVENT_CLICKED, NULL);
+	lv_timer_handler();
+	assert(!c->model->flow.delete_pending && c->model->flow.page == CONTACTS_PAGE_DETAIL);
+	assert(!find_text(lv_screen_active(), "Delete contact?"));
 	click(LV_SYMBOL_TRASH); click("Delete contact"); assert(c->model->count == 8 && c->model->flow.page == CONTACTS_PAGE_LIST);
 	assert(!find_text(active_page().header_right, "Search name / phone"));
 	assert(bepio_app_manager_delete() == 0);
@@ -224,7 +263,7 @@ int main(int argc, char **argv)
 	for (unsigned i = 1; i <= 13; i++) {
 		char name[20], phone[25]; uint32_t id;
 		snprintf(name, sizeof(name), "Zed %02u", i);
-		snprintf(phone, sizeof(phone), "+120255502%02u", i);
+		snprintf(phone, sizeof(phone), "120255502%02u", i);
 		assert(contacts_controller_add(c, name, phone, &id) == 0);
 		lv_timer_handler();
 	}

@@ -108,6 +108,7 @@ static void bepio_contacts_list_page_render(bepio_contacts_page_context_t *base)
 		lv_obj_t *add = bepio_contacts_page_button(&ctx->base, header_right, LV_SYMBOL_PLUS, 0, 0, 40,
 			LV_PAGE_HEADER_HEIGHT, GREEN, ACT_NEW);
 		lv_obj_set_style_bg_opa(add, LV_OPA_TRANSP, 0);
+		lv_obj_set_style_text_color(lv_obj_get_child(add, 0), lv_color_black(), 0);
 	} else {
 		bepio_contacts_page_text(ctx->base.root, "Contacts", 14, 9, 0, INK);
 		bepio_contacts_page_button(&ctx->base, ctx->base.root, LV_SYMBOL_PLUS, lv_obj_get_width(ctx->base.root) - 40, 0, 40, 32, GREEN, ACT_NEW);

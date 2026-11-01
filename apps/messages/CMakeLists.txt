@@ -1,5 +1,5 @@
 set(sources)
-set(dependencies uilv lvgl platform appmgr messaging contacts tts audio_board)
+set(dependencies uilv lvgl platform appmgr messaging contacts tts audio_board mn316_ctrl)
 if(CONFIG_BEPIO_APP_MESSAGES)
     list(APPEND sources "app.c" "model.c" "view.c" "controller.c" "voice.c"
         "pages/messages_page_common.c"

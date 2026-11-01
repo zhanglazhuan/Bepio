@@ -8,7 +8,7 @@
 #define BEPIO_PAGER_TEXT_MAX 384
 #define BEPIO_PAGER_ADDRESS_MAX 192
 #define BEPIO_PAGER_WIRE_MAX 960
-#define BEPIO_PAGER_DEVICE "Pager_MN316"
+#include "bepio_mn316_config.h"
 
 struct bepio_pager_message {
 	char from[BEPIO_PAGER_NAME_MAX + 1];

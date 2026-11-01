@@ -1,7 +1,7 @@
 #include "messages_detail.h"
-#include <stdlib.h>
 #include "messages_page_context.h"
 #include "messages_page_common.h"
+#include <stdio.h>
 #include <string.h>
 #ifdef ESP_PLATFORM
 #include "../voice.h"
@@ -72,26 +72,36 @@ static void render_thread(messages_page_context_t *ctx, lv_obj_t *root,
 		} else {
 			messages_page_text(bubble, message.payload.body[0] ? message.payload.body : "Empty draft", 0xe9eff8);
 		}
-		messages_page_text(bubble, bepio_messaging_state_label(&message), 0xa8bad2);
 	}
 }
 
 
-static void messages_detail_page_render(messages_page_context_t *ctx)
+lv_obj_t *messages_detail_build(void *app, void *payload)
 {
+	(void)payload;
+	messages_view_t *view = app;
+	Page page = lv_page_create("Messages", true, messages_page_back, view);
+	if (!page.screen || !page.container) { return NULL; }
+	messages_page_context_t *ctx = messages_page_alloc(sizeof(*ctx), view);
+	if (!ctx) { return messages_page_finish(view, page, NULL); }
+	messages_page_prepare(ctx, page, "Messages");
 	lv_obj_t *root = ctx->root;
 	messages_controller_t *controller = ctx->controller;
 	bepio_message_t message;
-	if (!lv_page_has_header(root)) {
-		messages_page_button(ctx, root, LV_SYMBOL_LEFT "  Back", ACT_BACK, 0x263c5c);
-	}
 	if (bepio_messaging_get(controller->model->flow.box,
 		controller->model->flow.selected_id, false, &message)) {
-		messages_page_text(root, "Message no longer exists", 0xffb4a9); return;
+		messages_page_text(root, "Message no longer exists", 0xffb4a9);
+		return messages_page_finish(view, page, ctx);
 	}
-	messages_page_text(root, message.payload.name[0] ? message.payload.name :
-		message.payload.phone, 0x73d7b6);
-	messages_page_text(root, message.payload.phone, 0xa8bad2);
+	char contact[BEPIO_MESSAGE_NAME_MAX + BEPIO_MESSAGE_PHONE_MAX + 3];
+	if (message.payload.name[0]) {
+		snprintf(contact, sizeof(contact), "%s(%s)", message.payload.name, message.payload.phone);
+	} else {
+		snprintf(contact, sizeof(contact), "%s", message.payload.phone);
+	}
+	lv_obj_t *contact_label = messages_page_text(root, contact, 0x73d7b6);
+	lv_label_set_long_mode(contact_label, LV_LABEL_LONG_DOT);
+	lv_obj_set_height(contact_label, lv_font_get_line_height(lv_obj_get_style_text_font(contact_label, 0)));
 	render_thread(ctx, root, &message);
 	if (controller->model->flow.box == BEPIO_MESSAGE_INBOX) {
 		messages_page_button(ctx, root, "Reply", ACT_REPLY, 0x346bd3);
@@ -102,20 +112,6 @@ static void messages_detail_page_render(messages_page_context_t *ctx)
 	if (message.state == BEPIO_MESSAGE_FAILED) {
 		messages_page_button(ctx, root, "Retry", ACT_RETRY, 0x346bd3);
 	}
-	if (message.state != BEPIO_MESSAGE_SENDING) {
-		messages_page_button(ctx, root, "Delete message", ACT_DELETE, 0x8d3e4a);
-	}
-}
-
-lv_obj_t *messages_detail_build(void *app, void *payload)
-{
-	(void)payload;
-	messages_view_t *view = app;
-	messages_page_context_t *ctx = messages_page_alloc(sizeof(messages_page_context_t), view);
-	if (!ctx) { return NULL; }
-	lv_obj_t *screen = messages_page_begin(ctx, "Messages");
-	if (!screen) { free(ctx); return NULL; }
-	messages_detail_page_render(ctx);
-	return messages_page_finish(ctx);
+	return messages_page_finish(view, page, ctx);
 }
 

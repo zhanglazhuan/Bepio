@@ -21,14 +21,14 @@ static void test_model_crud(void)
 
 	contacts_model_init(&model);
 	assert(model.count == 0);
-	assert(contacts_model_add(&model, "妈妈", "+8613800000000", &first) == 0);
+	assert(contacts_model_add(&model, "妈妈", "8613800000000", &first) == 0);
 	assert(contacts_model_add(&model, "Dad", "13900000000", &second) == 0);
 	assert(first == 1 && second == 2);
 	assert(contacts_model_get(&model, first, &entry) == 0);
 	assert(strcmp(entry.name, "妈妈") == 0);
 	assert(!entry.favorite);
 	assert(bepio_contacts_model_toggle_favorite(&model, first) == 0);
-	assert(contacts_model_update(&model, first, "Mother", "+8613800000001") == 0);
+	assert(contacts_model_update(&model, first, "Mother", "8613800000001") == 0);
 	assert(contacts_model_get(&model, first, &entry) == 0);
 	assert(entry.favorite);
 	assert(bepio_contacts_model_toggle_favorite(&model, first) == 0);
@@ -39,7 +39,7 @@ static void test_model_crud(void)
 	assert(contacts_model_update(&model, first, "Bad change", "12x") == -EINVAL);
 	assert(contacts_model_get(&model, first, &entry) == 0);
 	assert(strcmp(entry.name, "Mother") == 0);
-	assert(strcmp(entry.phone, "+8613800000001") == 0);
+	assert(strcmp(entry.phone, "8613800000001") == 0);
 	assert(contacts_model_delete(&model, first) == 0);
 	assert(contacts_model_get(&model, first, &entry) == -ENOENT);
 	assert(contacts_model_get(&model, second, &entry) == 0 && entry.id == second);
@@ -136,11 +136,11 @@ static void test_app_and_shell(void)
 	assert(settings_app_close_request() == 0);
 	assert(COMMAND("list") == 0);
 	assert(strstr(host_shell_output, "No contacts"));
-	assert(COMMAND("add", "Mom", "+8613800000000") == 0);
+	assert(COMMAND("add", "Mom", "8613800000000") == 0);
 	assert(strstr(host_shell_output, "Added contact 1"));
 	assert(COMMAND("add", "Dad Smith", "13900000000") == 0);
 	assert(COMMAND("list") == 0);
-	assert(strstr(host_shell_output, "1 | Mom | +8613800000000"));
+	assert(strstr(host_shell_output, "1 | Mom | 8613800000000"));
 	assert(strstr(host_shell_output, "2 | Dad Smith | 13900000000"));
 	assert(COMMAND("show", "1") == 0);
 	assert(COMMAND("update", "1", "Mother", "13800000001") == 0);
@@ -193,7 +193,7 @@ static void test_search_and_editor(void)
 		char name[24], phone[24];
 		uint32_t id;
 		snprintf(name, sizeof(name), i == 0 ? "Ava Chen" : "Person %u", i);
-		snprintf(phone, sizeof(phone), "+120255501%02u", i + 1);
+		snprintf(phone, sizeof(phone), "120255501%02u", i + 1);
 		assert(contacts_model_add(&model, name, phone, &id) == 0);
 	}
 	assert(model.count == CONFIG_BEPIO_CONTACTS_CAPACITY);
@@ -209,32 +209,39 @@ static void test_search_and_editor(void)
 	assert(contacts_controller_draft(&c, "Changed", model.entries[1].phone) == 0 && model.flow.dirty);
 	assert(contacts_controller_save(&c) == -EEXIST);
 	assert(model.flow.page == CONTACTS_PAGE_EDIT && !strcmp(model.entries[0].name, "Ava Chen"));
-	assert(contacts_controller_back(&c) && model.flow.page == CONTACTS_PAGE_DISCARD_CONFIRM);
-	assert(contacts_controller_back(&c) && model.flow.page == CONTACTS_PAGE_EDIT);
+	assert(contacts_controller_back(&c) && model.flow.page == CONTACTS_PAGE_EDIT && model.flow.discard_pending);
+	assert(contacts_controller_cancel_discard(&c) == 0 && !model.flow.discard_pending);
 	assert(!strcmp(model.flow.draft.name, "Changed"));
 	assert(contacts_controller_back(&c));
+	assert(model.flow.discard_pending);
 	assert(contacts_controller_discard(&c) == 0 && model.flow.page == CONTACTS_PAGE_DETAIL);
 	assert(contacts_controller_edit(&c, 1) == 0);
-	assert(contacts_controller_draft(&c, "Ava Updated", "+12025550142") == 0);
+	assert(contacts_controller_draft(&c, "Ava Updated", "12025550142") == 0);
 	assert(contacts_controller_save(&c) == 0 && model.flow.page == CONTACTS_PAGE_DETAIL);
 	assert(contacts_model_get(&model, 1, &entry) == 0 && !strcmp(entry.name, "Ava Updated"));
 	assert(contacts_controller_confirm_delete(&c) == -EACCES);
 	assert(contacts_controller_request_delete(&c) == 0);
-	assert(contacts_controller_back(&c));
+	assert(model.flow.page == CONTACTS_PAGE_DETAIL && model.flow.delete_pending);
+	assert(contacts_controller_cancel_delete(&c) == 0 && !model.flow.delete_pending);
+	assert(contacts_controller_confirm_delete(&c) == -EACCES);
 	assert(contacts_model_get(&model, 1, &entry) == 0);
+	assert(contacts_controller_request_delete(&c) == 0);
+	assert(contacts_controller_back(&c) && model.flow.page == CONTACTS_PAGE_DETAIL);
+	assert(!model.flow.delete_pending);
 	assert(contacts_controller_request_delete(&c) == 0);
 	assert(contacts_controller_confirm_delete(&c) == 0 && model.flow.page == CONTACTS_PAGE_LIST);
 	assert(model.count == CONFIG_BEPIO_CONTACTS_CAPACITY - 1);
 	assert(contacts_controller_edit(&c, 0) == 0);
 	assert(contacts_controller_draft(&c, "New Person", "+") == 0);
 	assert(contacts_controller_save(&c) == -EINVAL);
-	assert(contacts_controller_draft(&c, "New Person", "+12025550199") == 0);
+	assert(contacts_controller_draft(&c, "New Person", "12025550199") == 0);
 	assert(contacts_controller_save(&c) == 0 && model.count == CONFIG_BEPIO_CONTACTS_CAPACITY);
 	assert(model.flow.selected_id > 4);
 	assert(contacts_controller_edit(&c, 0) == 0);
 	assert(contacts_controller_draft(&c, "Overflow", "999") == 0);
 	assert(contacts_controller_save(&c) == -ENOSPC);
 	assert(contacts_controller_back(&c));
+	assert(model.flow.discard_pending);
 	assert(contacts_controller_discard(&c) == 0 && model.flow.page == CONTACTS_PAGE_LIST);
 	contacts_controller_deinit(&c);
 	assert(contacts_controller_edit(&c, 1) == -EACCES);
@@ -243,6 +250,16 @@ static void test_search_and_editor(void)
 
 int main(void)
 {
+	contacts_model_t pager_model;
+	contacts_entry_t pager_entry;
+	uint32_t pager_id;
+	contacts_model_init(&pager_model);
+	assert(contacts_model_add(&pager_model, "PC", "100000000000002", &pager_id) == 0);
+	assert(contacts_model_get(&pager_model, pager_id, &pager_entry) == 0);
+	assert(!strcmp(pager_entry.phone, "100000000000002"));
+	assert(contacts_model_add(&pager_model, "Again", "100000000000002", &pager_id) == -EEXIST);
+	assert(contacts_model_add(&pager_model, "Bad", "Pager_", &pager_id) == -EINVAL);
+	assert(contacts_model_add(&pager_model, "Bad", "Pager_+/inbox", &pager_id) == -EINVAL);
 	test_model_crud();
 	test_validation_and_capacity();
 	test_app_and_shell();

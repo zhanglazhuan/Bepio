@@ -41,7 +41,9 @@ int contacts_controller_edit(contacts_controller_t *controller, uint32_t id);
 int contacts_controller_draft(contacts_controller_t *controller, const char *name, const char *phone);
 int contacts_controller_save(contacts_controller_t *controller);
 int contacts_controller_discard(contacts_controller_t *controller);
+int contacts_controller_cancel_discard(contacts_controller_t *controller);
 int contacts_controller_request_delete(contacts_controller_t *controller);
+int contacts_controller_cancel_delete(contacts_controller_t *controller);
 int contacts_controller_confirm_delete(contacts_controller_t *controller);
 int contacts_controller_search(contacts_controller_t *controller, const char *query);
 

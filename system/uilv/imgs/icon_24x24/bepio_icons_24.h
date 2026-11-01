@@ -5,5 +5,6 @@
 
 LV_IMAGE_DECLARE(ic_visibility_24);
 LV_IMAGE_DECLARE(ic_visibility_off_24);
+LV_IMAGE_DECLARE(ic_mic_24);
 
 #endif

@@ -1,7 +1,7 @@
 #include "messages_compose.h"
-#include <stdlib.h>
 #include "messages_page_context.h"
 #include "messages_page_common.h"
+#include "system/uilv/imgs/icon_28x28/bepio_icons_28.h"
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
@@ -49,17 +49,51 @@ static int sync_editor(messages_page_context_t *base)
 	if (!ret) { ret = messages_controller_text(controller, body); }
 	controller->view->available = true;
 	if (ctx->send_button) {
-		if (selected && !ret) { lv_obj_remove_state(ctx->send_button, LV_STATE_DISABLED); }
+		if (selected && body[0] && !ret) { lv_obj_remove_state(ctx->send_button, LV_STATE_DISABLED); }
 		else { lv_obj_add_state(ctx->send_button, LV_STATE_DISABLED); }
 	}
 	return ret;
 }
+
+static void keep_input_visible(compose_context_t *ctx);
 
 static void edited(lv_event_t *event)
 {
 	compose_context_t *ctx = lv_event_get_user_data(event);
 	if (ctx->recipient_select && ctx->body_input) {
 		messages_page_result(&ctx->base, sync_editor(&ctx->base));
+		if (lv_event_get_target_obj(event) == ctx->body_input) {
+			keep_input_visible(ctx);
+		}
+	}
+}
+
+static void keep_input_visible(compose_context_t *ctx)
+{
+	messages_page_context_t *base = &ctx->base;
+	if (!base->keyboard || lv_obj_has_flag(base->keyboard, LV_OBJ_FLAG_HIDDEN)) { return; }
+	lv_obj_t *root = base->root;
+	lv_obj_set_style_pad_bottom(root, lv_obj_get_height(base->keyboard) + 8, 0);
+	lv_obj_update_layout(lv_obj_get_screen(root));
+	lv_area_t input, keyboard;
+	lv_obj_get_coords(ctx->body_input, &input);
+	lv_obj_get_coords(base->keyboard, &keyboard);
+	if (input.y2 >= keyboard.y1) {
+		lv_obj_scroll_to_y(root, lv_obj_get_scroll_y(root) + input.y2 - keyboard.y1 + 1,
+			LV_ANIM_OFF);
+	}
+	lv_obj_t *label = lv_textarea_get_label(ctx->body_input);
+	lv_point_t cursor;
+	lv_obj_update_layout(label);
+	lv_label_get_letter_pos(label, lv_textarea_get_cursor_pos(ctx->body_input), &cursor);
+	int32_t top = lv_obj_get_scroll_top(ctx->body_input);
+	int32_t line_height = lv_font_get_line_height(
+		lv_obj_get_style_text_font(ctx->body_input, LV_PART_MAIN));
+	int32_t height = lv_obj_get_content_height(ctx->body_input);
+	if (cursor.y < top) {
+		lv_obj_scroll_to_y(ctx->body_input, cursor.y, LV_ANIM_OFF);
+	} else if (cursor.y + line_height > top + height) {
+		lv_obj_scroll_to_y(ctx->body_input, cursor.y + line_height - height, LV_ANIM_OFF);
 	}
 }
 
@@ -68,12 +102,14 @@ static void focus(lv_event_t *event)
 	messages_page_context_t *ctx = lv_event_get_user_data(event);
 	lv_keyboard_set_textarea(ctx->keyboard, lv_event_get_target_obj(event));
 	lv_obj_remove_flag(ctx->keyboard, LV_OBJ_FLAG_HIDDEN);
+	keep_input_visible((compose_context_t *)ctx);
 }
 
 static void keyboard_done(lv_event_t *event)
 {
 	messages_page_context_t *ctx = lv_event_get_user_data(event);
 	lv_obj_add_flag(ctx->keyboard, LV_OBJ_FLAG_HIDDEN);
+	lv_obj_set_style_pad_bottom(ctx->root, 8, 0);
 }
 
 static lv_obj_t *input(messages_page_context_t *ctx, lv_obj_t *root,
@@ -97,7 +133,11 @@ static lv_obj_t *input(messages_page_context_t *ctx, lv_obj_t *root,
 static void recipient_open(lv_event_t *event)
 {
 	messages_page_context_t *ctx = lv_event_get_user_data(event);
-	if (ctx->keyboard) { lv_obj_add_flag(ctx->keyboard, LV_OBJ_FLAG_HIDDEN); }
+	if (ctx->keyboard) {
+		lv_obj_add_flag(ctx->keyboard, LV_OBJ_FLAG_HIDDEN);
+		lv_obj_set_style_pad_bottom(ctx->root, 8, 0);
+		lv_obj_scroll_to_y(ctx->root, 0, LV_ANIM_OFF);
+	}
 }
 
 static lv_obj_t *recipient_dropdown(compose_context_t *ctx, lv_obj_t *root)
@@ -144,20 +184,32 @@ static lv_obj_t *recipient_dropdown(compose_context_t *ctx, lv_obj_t *root)
 }
 
 
-static messages_page_context_t *messages_compose_page_create(messages_view_t *view)
+lv_obj_t *messages_compose_build(void *app, void *payload)
 {
-	messages_page_context_t *ctx = messages_page_alloc(sizeof(compose_context_t), view);
-	if (ctx) { ctx->sync = sync_editor; }
-	return ctx;
-}
-
-static void messages_compose_page_render(messages_page_context_t *base)
-{
+	(void)payload;
+	messages_view_t *view = app;
+	Page page = lv_page_create("New message", true, messages_page_back, view);
+	if (!page.screen || !page.container) { return NULL; }
+	messages_page_context_t *base = messages_page_alloc(sizeof(compose_context_t), view);
+	if (!base) { return messages_page_finish(view, page, NULL); }
+	base->sync = sync_editor;
+	messages_page_prepare(base, page, "New message");
 	compose_context_t *compose = (compose_context_t *)base;
 	lv_obj_t *root = base->root;
 	messages_controller_t *controller = base->controller;
-	if (!lv_page_has_header(root)) {
-		messages_page_button(base, root, LV_SYMBOL_LEFT "  Back", ACT_BACK, 0x263c5c);
+	lv_obj_t *header_right = lv_page_header_right(root);
+	if (header_right) {
+		lv_page_set_title(root, "New message", 40);
+		compose->send_button = messages_page_button(base, header_right, "", ACT_SEND, 0x346bd3);
+		lv_obj_clean(compose->send_button);
+		lv_obj_set_size(compose->send_button, 40, LV_PAGE_HEADER_HEIGHT);
+		lv_obj_set_style_bg_opa(compose->send_button, LV_OPA_TRANSP, 0);
+		lv_obj_set_style_bg_opa(compose->send_button, LV_OPA_TRANSP, LV_STATE_PRESSED);
+		lv_obj_set_style_border_width(compose->send_button, 0, 0);
+		lv_obj_set_style_pad_all(compose->send_button, 0, 0);
+		lv_obj_t *icon = lv_image_create(compose->send_button);
+		lv_image_set_src(icon, &ic_send_28);
+		lv_obj_center(icon);
 	}
 	compose->recipient_select = recipient_dropdown(compose, root);
 	compose->body_input = input(base, root, "Write a message...",
@@ -166,29 +218,16 @@ static void messages_compose_page_render(messages_page_context_t *base)
 	lv_obj_add_event_cb(compose->recipient_select, recipient_open, LV_EVENT_CLICKED, base);
 	lv_obj_add_event_cb(compose->recipient_select, recipient_open, LV_EVENT_FOCUSED, base);
 	lv_obj_add_event_cb(compose->body_input, edited, LV_EVENT_VALUE_CHANGED, compose);
-	messages_page_button(base, root, "Save draft", ACT_SAVE, 0x263c5c);
-	compose->send_button = messages_page_button(base, root, "Review & queue", ACT_SEND, 0x346bd3);
-	if (!lv_dropdown_get_selected(compose->recipient_select)) {
+	if (compose->send_button &&
+	    (!lv_dropdown_get_selected(compose->recipient_select) || !controller->model->editor.body[0])) {
 		lv_obj_add_state(compose->send_button, LV_STATE_DISABLED);
 	}
-	messages_page_text(root, "Offline: queued messages wait here.", 0x93a7c2);
 	base->keyboard = lv_keyboard_create(lv_obj_get_screen(root));
 	lv_obj_set_size(base->keyboard, lv_pct(100), 112);
 	lv_obj_align(base->keyboard, LV_ALIGN_BOTTOM_MID, 0, 0);
 	lv_obj_add_flag(base->keyboard, LV_OBJ_FLAG_HIDDEN);
 	lv_obj_add_event_cb(base->keyboard, keyboard_done, LV_EVENT_READY, base);
 	lv_obj_add_event_cb(base->keyboard, keyboard_done, LV_EVENT_CANCEL, base);
-}
-
-lv_obj_t *messages_compose_build(void *app, void *payload)
-{
-	(void)payload;
-	messages_view_t *view = app;
-	messages_page_context_t *ctx = messages_compose_page_create(view);
-	if (!ctx) { return NULL; }
-	lv_obj_t *screen = messages_page_begin(ctx, "New message");
-	if (!screen) { free(ctx); return NULL; }
-	messages_compose_page_render(ctx);
-	return messages_page_finish(ctx);
+	return messages_page_finish(view, page, base);
 }
 

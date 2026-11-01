@@ -19,7 +19,7 @@ int host_shell_errors;
 
 static bepio_message_payload_t payload = {
 	.name = "妈妈",
-	.phone = "+8613800000000",
+	.phone = "8613800000000",
 	.body = "我到家了。",
 };
 
@@ -30,6 +30,13 @@ static void test_validation(void)
 
 	assert(bepio_messaging_init() == 0);
 	assert(bepio_messaging_validate(&p, true) == 0);
+	strcpy(p.phone, "100000000000002");
+	assert(bepio_messaging_validate(&p, true) == 0);
+	strcpy(p.phone, "Pager_");
+	assert(bepio_messaging_validate(&p, true) == -EINVAL);
+	strcpy(p.phone, "Pager_+/inbox");
+	assert(bepio_messaging_validate(&p, true) == -EINVAL);
+	p = payload;
 	memset(p.body, 'a', sizeof(p.body) - 1);
 	p.body[BEPIO_MESSAGE_BODY_MAX] = 0;
 	assert(bepio_messaging_validate(&p, true) == 0);
@@ -189,16 +196,16 @@ static void test_app(void)
 	assert(COMMAND("back") == -ENOENT);
 	assert(settings_app_close_request() == 0);
 	assert(bepio_app_manager_show(NULL, NULL, NULL, "Contacts") == 0);
-	assert(contacts_controller_add(contacts, "Mom", "+8613800000000", &contact_id) == 0);
+	assert(contacts_controller_add(contacts, "Mom", "8613800000000", &contact_id) == 0);
 	assert(bepio_app_manager_delete() == 0);
 	assert(contacts_controller_lookup(contacts, contact_id, &contact) == 0);
 	assert(COMMAND("home") == 0);
 	assert(strstr(host_shell_output, "offline"));
 	assert(COMMAND("contacts") == 0);
-	assert(strstr(host_shell_output, "1 | Mom | +8613800000000"));
+	assert(strstr(host_shell_output, "1 | Mom | 8613800000000"));
 	assert(!strcmp(bepio_app_manager_get_current_app_name(), "Messages"));
 	assert(COMMAND("to", "1") == 0);
-	assert(strstr(host_shell_output, "Mom <+8613800000000>"));
+	assert(strstr(host_shell_output, "Mom <8613800000000>"));
 	assert(COMMAND("send") == -EINVAL); /* Empty body cannot be queued. */
 	assert(COMMAND("text", "Hello 妈妈") == 0);
 	assert(COMMAND("home") == -EBUSY);
@@ -274,8 +281,39 @@ static void test_app(void)
 	assert(contacts_controller_delete(contacts, contact_id) == 0);
 	assert(bepio_messaging_get(BEPIO_MESSAGE_OUTBOX, draft, false, &message) == 0);
 	assert(!strcmp(message.payload.name, "Mom") &&
-	       !strcmp(message.payload.phone, "+8613800000000"));
+	       !strcmp(message.payload.phone, "8613800000000"));
 	assert(bepio_app_manager_delete() == 0);
+}
+
+static void test_number_contact_queue(void)
+{
+	contacts_controller_t *contacts = contacts_app_get_controller();
+	messages_controller_t *messages = messages_app_get_controller();
+	bepio_message_t message;
+	uint32_t contact_id, id;
+	assert(bepio_messaging_init() == 0);
+	assert(bepio_app_manager_show(NULL, NULL, NULL, "Contacts") == 0);
+	assert(contacts_controller_add(contacts, "PC", "13800138000", &contact_id) == 0);
+	assert(bepio_app_manager_delete() == 0);
+	assert(COMMAND("home") == 0);
+	assert(messages_controller_contact(messages, contact_id) == 0);
+	assert(messages_controller_text(messages, "hahaha") == 0);
+	assert(messages_controller_send_now(messages, &id) == 0);
+	assert(bepio_messaging_begin(false, &message) == -ENETDOWN);
+	assert(bepio_app_manager_delete() == 0);
+	assert(bepio_app_manager_show(NULL, NULL, NULL, "Contacts") == 0);
+	assert(contacts_controller_delete(contacts, contact_id) == 0);
+	/* Deleting an address does not rewrite the immutable queued recipient. */
+	bepio_messaging_set_online(true);
+	assert(bepio_messaging_begin(false, &message) == 0 && message.id == id);
+	assert(!strcmp(message.payload.name, "PC") &&
+	       !strcmp(message.payload.phone, "13800138000") &&
+	       !strcmp(message.payload.body, "hahaha"));
+	assert(bepio_messaging_complete(id, message.attempt, false, true) == 0);
+	assert(bepio_messaging_get(BEPIO_MESSAGE_OUTBOX, id, false, &message) == 0);
+	assert(message.state == BEPIO_MESSAGE_SENT && !message.simulated);
+	assert(bepio_app_manager_delete() == 0);
+	bepio_messaging_set_online(false);
 }
 
 static void test_editor_failure_retention(void)
@@ -339,6 +377,7 @@ int main(void)
 	test_inbox();
 	test_queue();
 	test_app();
+	test_number_contact_queue();
 	test_editor_failure_retention();
 	test_retention();
 	puts("PASS: Messages UTF-8, inbox, queue/ACK/retry, confirmations, drafts, Contacts, "

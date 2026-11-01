@@ -1,12 +1,14 @@
-#include "chats_page.h"
+#include "chats_main.h"
 #include "../view.h"
 #include "lv_page.h"
 #include "lvgl.h"
+#include "system/uilv/imgs/icon_24x24/bepio_icons_24.h"
+#include <errno.h>
 #include <stdint.h>
 #include <stdlib.h>
 
 typedef struct bepio_chats_page {
-	lv_obj_t *root, *conversation, *selected_button;
+	lv_obj_t *root, *conversation, *thread, *notice, *record_button, *selected_button;
 	bepio_chats_controller_t *controller;
 } bepio_chats_page_t;
 
@@ -35,14 +37,16 @@ static void play(lv_event_t *event)
 
 static void render_conversation(bepio_chats_page_t *page)
 {
-	lv_obj_t *conversation = page->conversation;
+	lv_obj_t *conversation = page->thread;
 	lv_obj_clean(conversation);
 	bepio_chats_contact_t contact;
 	if (bepio_chats_controller_contact_at(page->controller,
 			bepio_chats_controller_selected(page->controller), &contact)) {
 		label(conversation, "Select a contact", 0x8c9aa8);
+		lv_obj_add_flag(page->record_button, LV_OBJ_FLAG_HIDDEN);
 		return;
 	}
+	lv_obj_remove_flag(page->record_button, LV_OBJ_FLAG_HIDDEN);
 	label(conversation, contact.name, 0xe9eff8);
 	bepio_chats_message_t message;
 	if (bepio_chats_controller_message_at(page->controller, 0, &message)) {
@@ -86,6 +90,44 @@ static void render_conversation(bepio_chats_page_t *page)
 	}
 }
 
+static const char *record_error(int error)
+{
+	switch (error) {
+	case -ENOTSUP: return "Speech input unavailable";
+	case -ENOENT: return "Save contact first";
+	case -ENOSPC: return "Mailbox full";
+	case -EBUSY: return "Recorder busy";
+	case -EINVAL: return "No speech recognized";
+	case -ENAMETOOLONG: return "Speech is too long";
+	default: return "Could not send. Try again";
+	}
+}
+
+static void record_event(lv_event_t *event)
+{
+	bepio_chats_page_t *page = lv_event_get_user_data(event);
+	lv_event_code_t code = lv_event_get_code(event);
+	if (code == LV_EVENT_PRESSED) {
+		int ret = bepio_chats_controller_record_start(page->controller);
+		lv_label_set_text(page->notice, ret ? record_error(ret) : "Recording... release to queue");
+		if (!ret) {
+			lv_obj_set_style_bg_color(page->record_button, lv_color_hex(0x9c4545), 0);
+		}
+	} else if (code == LV_EVENT_PRESS_LOST) {
+		if (page->controller->recording) {
+			bepio_chats_controller_record_cancel(page->controller);
+			lv_label_set_text(page->notice, "Recording cancelled");
+		}
+		lv_obj_set_style_bg_color(page->record_button, lv_color_hex(0x3d7657), 0);
+	} else if (code == LV_EVENT_RELEASED && page->controller->recording) {
+		uint32_t id;
+		int ret = bepio_chats_controller_record_stop(page->controller, &id);
+		lv_obj_set_style_bg_color(page->record_button, lv_color_hex(0x3d7657), 0);
+		lv_label_set_text(page->notice, ret ? record_error(ret) : "Queued for sending");
+		if (!ret) { render_conversation(page); }
+	}
+}
+
 static void select_contact(lv_event_t *event)
 {
 	bepio_chats_page_t *page = lv_event_get_user_data(event);
@@ -94,10 +136,12 @@ static void select_contact(lv_event_t *event)
 	if (page->selected_button) { lv_obj_set_style_bg_color(page->selected_button, lv_color_hex(0x202c3b), 0); }
 	page->selected_button = lv_event_get_target_obj(event);
 	lv_obj_set_style_bg_color(page->selected_button, lv_color_hex(0x3d7657), 0);
+	lv_obj_set_style_bg_color(page->record_button, lv_color_hex(0x3d7657), 0);
+	lv_label_set_text(page->notice, "");
 	render_conversation(page);
 }
 
-lv_obj_t *bepio_chats_page_build(void *app, void *payload)
+lv_obj_t *bepio_chats_main_build(void *app, void *payload)
 {
 	(void)payload;
 	bepio_chats_view_t *view = app;
@@ -128,7 +172,35 @@ lv_obj_t *bepio_chats_page_build(void *app, void *payload)
 	lv_obj_set_style_border_width(page->conversation, 0, 0);
 	lv_obj_set_style_radius(page->conversation, 0, 0);
 	lv_obj_set_flex_flow(page->conversation, LV_FLEX_FLOW_COLUMN);
-	lv_obj_set_scroll_dir(page->conversation, LV_DIR_VER);
+	lv_obj_remove_flag(page->conversation, LV_OBJ_FLAG_SCROLLABLE);
+	page->thread = lv_obj_create(page->conversation);
+	lv_obj_set_width(page->thread, lv_pct(100));
+	lv_obj_set_height(page->thread, 0);
+	lv_obj_set_flex_grow(page->thread, 1);
+	lv_obj_set_style_pad_all(page->thread, 0, 0);
+	lv_obj_set_style_pad_row(page->thread, 7, 0);
+	lv_obj_set_style_bg_opa(page->thread, LV_OPA_TRANSP, 0);
+	lv_obj_set_style_border_width(page->thread, 0, 0);
+	lv_obj_set_flex_flow(page->thread, LV_FLEX_FLOW_COLUMN);
+	lv_obj_set_scroll_dir(page->thread, LV_DIR_VER);
+	page->notice = label(page->conversation, "", 0xffb4a9);
+	lv_obj_set_width(page->notice, lv_pct(100));
+	page->record_button = lv_button_create(page->conversation);
+	lv_obj_set_size(page->record_button, lv_pct(100), 36);
+	lv_obj_set_style_bg_color(page->record_button, lv_color_hex(0x3d7657), 0);
+	lv_obj_set_style_shadow_width(page->record_button, 0, 0);
+	lv_obj_set_style_pad_all(page->record_button, 4, 0);
+	lv_obj_set_flex_flow(page->record_button, LV_FLEX_FLOW_ROW);
+	lv_obj_set_flex_align(page->record_button, LV_FLEX_ALIGN_CENTER,
+		LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+	lv_obj_t *mic = lv_image_create(page->record_button);
+	lv_image_set_src(mic, &ic_mic_24);
+	lv_obj_set_style_image_recolor(mic, lv_color_white(), 0);
+	lv_obj_set_style_image_recolor_opa(mic, LV_OPA_COVER, 0);
+	label(page->record_button, "Hold to talk", 0xffffff);
+	lv_obj_add_event_cb(page->record_button, record_event, LV_EVENT_PRESSED, page);
+	lv_obj_add_event_cb(page->record_button, record_event, LV_EVENT_RELEASED, page);
+	lv_obj_add_event_cb(page->record_button, record_event, LV_EVENT_PRESS_LOST, page);
 	bepio_chats_contact_t contact;
 	for (size_t i = 0; !bepio_chats_controller_contact_at(page->controller, i, &contact); i++) {
 		lv_obj_t *button = lv_button_create(contacts);

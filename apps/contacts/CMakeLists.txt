@@ -6,8 +6,6 @@ if(CONFIG_BEPIO_APP_CONTACTS)
         "pages/contacts_list.c"
         "pages/contacts_detail.c"
         "pages/contacts_edit.c"
-        "pages/contacts_delete_confirm.c"
-        "pages/contacts_discard_confirm.c"
     )
     if(CONFIG_BEPIO_CONTACTS_SHELL)
         list(APPEND sources "shell.c")

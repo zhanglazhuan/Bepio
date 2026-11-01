@@ -8,11 +8,11 @@
 - **查找**：按姓名（ASCII大小写不敏感）或号码片段实时过滤，显示匹配数量。
   搜索框唤起字母键盘，完成键/Back收起；空结果显示提示，清除按钮恢复列表。
 - **详情**：点击联系人查看姓名与号码，支持返回列表、编辑、删除。
-- **新增/编辑**：姓名和号码输入框、字母/数字键盘自动切换，号码键盘含 `+`。
+- **新增/编辑**：姓名和数字设备 ID 输入框。
   Save写入controller/model并进入详情；Cancel或Back在有未保存修改时确认放弃。
-- **删除**：必须经过确认页；Keep contact保留，Delete contact删除并返回列表。
+- **删除**：在详情页弹出底部确认窗；Keep contact 保留，Delete contact 删除并返回列表。
 - **浏览**：列表可上下滚动，每页最多12项，更多联系人提供More/Previous，控制LVGL内存占用。
-- **返回**：详情回列表，列表回launcher；编辑/确认页按导航状态返回，不直接丢失草稿。
+- **返回**：详情回列表，列表回launcher；编辑页有未保存修改时显示底部确认窗。
 
 当前界面和屏幕键盘为英文/拉丁字符；底层保留既有UTF-8姓名验证，尚无中文输入法和完整中文字库。
 
@@ -39,7 +39,7 @@
 - `controller.c`：详情、草稿、保存、删除确认、取消/放弃及返回状态。
 - `view.c`：注册独立页面并在退出时释放当前页面上下文；controller 通过 `page_navigator` 导航，草稿和搜索状态保存在 model 的临时 `flow` 中。
 
-姓名非空、最长48字节，不接受控制字符或全空格；号码最长24字节，仅数字和可选前导+。
+姓名非空、最长48字节，不接受控制字符或全空格；设备 ID 最长24字节，只接受数字。
 号码必须唯一；不做国家码格式归一化。删除不改变其他ID，同次启动不复用已删除ID。
 
 ```powershell
@@ -59,7 +59,7 @@ python tests/unittest/contacts/run.py
 |---|---|---|
 | ![列表](../../docs/assets/contacts-list.png) | ![详情](../../docs/assets/contacts-detail.png) | ![编辑](../../docs/assets/contacts-edit.png) |
 
-[号码键盘](../../docs/assets/contacts-phone-keyboard.png) ·
+[设备 ID 输入](../../docs/assets/contacts-device-id.png) ·
 [搜索](../../docs/assets/contacts-search.png) ·
 [校验错误](../../docs/assets/contacts-error.png) ·
 [删除确认](../../docs/assets/contacts-delete.png) ·
@@ -72,8 +72,8 @@ python tests/unittest/contacts/run.py
 - `pages/contacts_list.c`: list, sorting, pagination and Add action.
 - `pages/contacts_detail.c`: Contact Detail, Send Message, Edit/Delete icons.
 - `pages/contacts_edit.c`: New/Edit Contact form and keyboard events.
-- `pages/contacts_delete_confirm.c`: Delete Contact confirmation.
-- `pages/contacts_discard_confirm.c`: Discard Changes confirmation.
+- `pages/contacts_detail.c`: Contact Detail and delete confirmation bottom sheet.
+- `pages/contacts_edit.c`: Edit form and discard confirmation bottom sheet.
 - `pages/contacts_page_common.c`: shared controls, error display and controller actions.
 - `pages/contacts_pages_internal.h`: private UI context and page interfaces, LVGL thread only.
 

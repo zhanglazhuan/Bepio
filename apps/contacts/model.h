@@ -22,15 +22,13 @@ typedef enum {
 	CONTACTS_PAGE_LIST,
 	CONTACTS_PAGE_DETAIL,
 	CONTACTS_PAGE_EDIT,
-	CONTACTS_PAGE_DELETE_CONFIRM,
-	CONTACTS_PAGE_DISCARD_CONFIRM,
 } contacts_page_t;
 
 typedef struct {
 	contacts_page_t page, edit_return;
 	uint32_t selected_id;
 	contacts_entry_t draft;
-	bool dirty, search_editing;
+	bool dirty, search_editing, delete_pending, discard_pending;
 	char search[CONTACTS_NAME_MAX + 1];
 	size_t list_offset;
 } contacts_flow_t;

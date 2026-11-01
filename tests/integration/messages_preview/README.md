@@ -12,7 +12,7 @@ cmake --build build/messages-preview -j 8
 ```
 
 Windows 原生窗口以 2 倍显示 320×240 屏幕。鼠标点击相当于触摸，滚轮上下滚动，
-也支持按住鼠标拖动页面。点击输入框呼出屏幕键盘，点完成收起，然后滚动到保存等操作。
+也支持按住鼠标拖动页面。点击输入框呼出屏幕键盘，标题右上角的发送图标用于提交消息。
 通过 Back 返回上一级。关闭窗口退出，重新启动重置 mock 数据。
 
 运行自动检查与截图：
@@ -22,8 +22,8 @@ Windows 原生窗口以 2 倍显示 320×240 屏幕。鼠标点击相当于触�
 python tests/unittest/messages/run.py
 ```
 
-自动检查向真实 LVGL 对象发送事件，覆盖默认列表、已读、新建、保存草稿、
-编辑、确认排队、取消删除及确认删除；输出 home/inbox/detail/compose/delete/review/queued.ppm。
+自动检查向真实 LVGL 对象发送事件，覆盖默认列表、已读、新建、编辑、
+点击发送图标直接排队，并确认会话详情没有删除按钮；输出 home/inbox/detail/compose/queued.ppm。
 `docs/assets/messages-preview.png` 是上述页面的拼图。
 这些检查不证明实板触摸、SPI、FreeRTOS 调度或真实网络发送正确。
 

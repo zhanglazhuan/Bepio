@@ -68,6 +68,16 @@ int main(void)
 	assert(!memcmp(&model, &before, sizeof(model)));
 	flash[0] ^= 1; flash_size--;
 	assert(bepio_contacts_model_restore(&model) == -EINVAL);
+	assert(contacts_model_add(&model, "Legacy", "123", &id) == 0);
+	char *stored_number = (char *)flash + 12 + 4 + sizeof(entry.name);
+	strcpy(stored_number, "+8613800000000");
+	assert(bepio_contacts_model_restore(&reboot) == 0);
+	assert(contacts_model_get(&reboot, id, &entry) == 0 &&
+	       !strcmp(entry.phone, "8613800000000"));
+	strcpy(stored_number, "Pager_PC");
+	assert(bepio_contacts_model_restore(&reboot) == 0);
+	assert(contacts_model_get(&reboot, id, &entry) == 0 &&
+	       !strcmp(entry.phone, "Pager_PC"));
 	puts("PASS: contacts Flash restore, favorites, edits, deletes, stable IDs, failed-write rollback and corrupt snapshot rejection");
 	return 0;
 }

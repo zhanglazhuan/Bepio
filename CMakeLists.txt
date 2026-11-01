@@ -10,9 +10,9 @@ set(EXTRA_COMPONENT_DIRS
     drivers/audio_board
     system/platform
     system/controller
+    system/mn316_ctrl
     system/appmgr
     system/services/wifi
-    system/services/mn316_service
     system/services/account
     system/services/messaging
     system/services/tts

@@ -75,7 +75,7 @@ void bepio_ui_preferences_apply(const char *zone, bool h24, bool saving)
 void bepio_account_snapshot(bepio_account_snapshot_t *a)
 {
 	*a = (bepio_account_snapshot_t){.confirmed = false};
-	snprintf(a->id, sizeof(a->id), "bepio-aabbccddeeff");
+	snprintf(a->id, sizeof(a->id), "187723572702975");
 }
 int bepio_account_request(const char *id) { (void)id; return -ENETDOWN; }
 void bepio_device_info(char *buffer, size_t size)
@@ -149,7 +149,7 @@ int main(int argc, char **argv)
 	assert(c->view->page_nav.nav_ctx != NULL);
 	settings_controller_set_ui_available(c, true);
 	screenshot("settings-home");
-	lv_obj_t *card = lv_obj_get_parent(find_text(root, "bepio-aabbccddeeff"));
+	lv_obj_t *card = lv_obj_get_parent(find_text(root, "187723572702975"));
 	lv_obj_t *row = lv_obj_get_parent(find_text(root, "Datetime"));
 	assert(lv_obj_get_y(lv_obj_get_parent(find_text(root, "Usage"))) <
 		lv_obj_get_y(lv_obj_get_parent(find_text(root, "About"))));
@@ -253,7 +253,7 @@ int main(int argc, char **argv)
 	click("About"); assert(find_text(root, "Bepio v1\nESP32-S3\nHost preview fixture"));
 	screenshot("settings-about"); click(LV_SYMBOL_LEFT);
 	assert(c->view->page_nav.current_page == SETTINGS_PAGE_HOME);
-	click("bepio-aabbccddeeff"); assert(c->view->page_nav.current_page == SETTINGS_PAGE_ID);
+	click("187723572702975"); assert(c->view->page_nav.current_page == SETTINGS_PAGE_ID);
 	lv_obj_t *entry = find_type(root, &lv_textarea_class); assert(entry);
 	lv_obj_update_layout(root);
 	lv_obj_t *id_summary = lv_obj_get_child(root, 0);

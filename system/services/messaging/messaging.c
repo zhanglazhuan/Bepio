@@ -1,4 +1,5 @@
 #include "messaging.h"
+#include "../../../modules/pager_id.h"
 #ifdef ESP_PLATFORM
 #include "bepio_account.h"
 #endif
@@ -212,15 +213,13 @@ int bepio_messaging_validate(const bepio_message_payload_t *p, bool for_send)
 	if (n > BEPIO_MESSAGE_PHONE_MAX) {
 		return -ENAMETOOLONG;
 	}
-	if ((!n && for_send) || (n == 1 && p->phone[0] == '+')) {
+	if (!n && for_send) {
 		return -EINVAL;
 	}
-	for (size_t i = 0; i < n; i++) {
-		if (!(i == 0 && p->phone[i] == '+') && (p->phone[i] < '0' || p->phone[i] > '9')) {
-			return -EINVAL;
-		}
+	if (!n || bepio_pager_id_valid(p->phone, BEPIO_MESSAGE_PHONE_MAX)) {
+		return text_valid(p->body, BEPIO_MESSAGE_BODY_MAX, true, for_send);
 	}
-	return text_valid(p->body, BEPIO_MESSAGE_BODY_MAX, true, for_send);
+	return -EINVAL;
 }
 
 static int find(bepio_message_box_t box, uint32_t id, bepio_message_t **entry)
@@ -574,6 +573,29 @@ const char *bepio_messaging_state_label(const bepio_message_t *message)
 	}
 }
 
+#if defined(ESP_PLATFORM) || defined(BEPIO_MESSAGES_STORAGE)
+static bool restore_payload_valid(bepio_message_payload_t *payload, bool required)
+{
+	if (payload->phone[0] == '+' &&
+	    bepio_pager_id_valid(payload->phone + 1, BEPIO_MESSAGE_PHONE_MAX - 1)) {
+		memmove(payload->phone, payload->phone + 1, strlen(payload->phone));
+	}
+	if (!bepio_messaging_validate(payload, required)) return true;
+	/* Historical demo addresses remain visible in old conversations. They are
+	 * never accepted for a new send under the numeric-only validation above. */
+	if (strncmp(payload->phone, "Pager_", 6) || !payload->phone[6] ||
+	    strspn(payload->phone + 6,
+		"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-") !=
+	    strlen(payload->phone + 6)) return false;
+	char old_number[sizeof(payload->phone)];
+	strcpy(old_number, payload->phone);
+	strcpy(payload->phone, "1");
+	bool valid = !bepio_messaging_validate(payload, required);
+	strcpy(payload->phone, old_number);
+	return valid;
+}
+#endif
+
 int bepio_messaging_init(void)
 {
 	memset(inbox, 0, sizeof(inbox));
@@ -610,7 +632,7 @@ int bepio_messaging_init(void)
 		    !memchr(copy->inbox[i].payload.name, 0, sizeof(copy->inbox[i].payload.name)) ||
 		    !memchr(copy->inbox[i].payload.phone, 0, sizeof(copy->inbox[i].payload.phone)) ||
 		    !memchr(copy->inbox[i].payload.body, 0, sizeof(copy->inbox[i].payload.body)) ||
-		    bepio_messaging_validate(&copy->inbox[i].payload, true)) { free(copy); return -EIO; }
+		    !restore_payload_valid(&copy->inbox[i].payload, true)) { free(copy); return -EIO; }
 	}
 	for (size_t i = 0; i < copy->outbox_count; i++) {
 		if (!copy->outbox[i].id || copy->outbox[i].id >= copy->next_id ||
@@ -619,7 +641,7 @@ int bepio_messaging_init(void)
 		    !memchr(copy->outbox[i].payload.name, 0, sizeof(copy->outbox[i].payload.name)) ||
 		    !memchr(copy->outbox[i].payload.phone, 0, sizeof(copy->outbox[i].payload.phone)) ||
 		    !memchr(copy->outbox[i].payload.body, 0, sizeof(copy->outbox[i].payload.body)) ||
-		    bepio_messaging_validate(&copy->outbox[i].payload, false)) { free(copy); return -EIO; }
+		    !restore_payload_valid(&copy->outbox[i].payload, false)) { free(copy); return -EIO; }
 		if (copy->outbox[i].state == BEPIO_MESSAGE_SENDING) { copy->outbox[i].state = BEPIO_MESSAGE_QUEUED; }
 	}
 	for (size_t i = 0; i < copy->seen_count; i++) {

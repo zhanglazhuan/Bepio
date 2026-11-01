@@ -54,6 +54,7 @@ Page lv_page_create(const char *title, bool allow_back,
 
 	page.header = lv_obj_create(page.screen);
 	lv_obj_remove_style_all(page.header);
+	lv_obj_set_style_text_color(page.header, lv_color_black(), 0);
 	lv_obj_set_size(page.header, LV_PCT(100), LV_PAGE_HEADER_HEIGHT);
 	lv_obj_set_flex_flow(page.header, LV_FLEX_FLOW_ROW);
 	lv_obj_set_flex_align(page.header, LV_FLEX_ALIGN_SPACE_BETWEEN,
@@ -70,6 +71,7 @@ Page lv_page_create(const char *title, bool allow_back,
 		lv_obj_set_style_pad_all(back, 0, 0);
 		lv_obj_t *icon = lv_label_create(back);
 		lv_label_set_text(icon, LV_SYMBOL_LEFT);
+		lv_obj_set_style_text_color(icon, lv_color_black(), 0);
 		lv_obj_center(icon);
 		if (back_cb) { lv_obj_add_event_cb(back, back_cb, LV_EVENT_CLICKED, user_data); }
 	} else {
@@ -92,6 +94,7 @@ Page lv_page_create(const char *title, bool allow_back,
 
 	page.header_right = lv_obj_create(page.header);
 	lv_obj_remove_style_all(page.header_right);
+	lv_obj_set_style_text_color(page.header_right, lv_color_black(), 0);
 	lv_obj_set_size(page.header_right, 40, LV_PAGE_HEADER_HEIGHT);
 
 	page.container = lv_obj_create(page.screen);

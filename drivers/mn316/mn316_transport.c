@@ -1,6 +1,6 @@
-#include "mn316_tls.h"
-#include "pager_message.h"
-
+#include "mn316_internal.h"
+#include "mn316_network.h"
+#include <errno.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -21,25 +21,9 @@
 #include "mbedtls/net_sockets.h"
 #include "mbedtls/ssl.h"
 #include "mbedtls/x509_crt.h"
-#include "sdkconfig.h"
 #include "bepio_devkit.h"
-#ifndef CONFIG_BEPIO_MN316_BAUD
-#define CONFIG_BEPIO_MN316_BAUD BEPIO_MN316_BAUD_RATE
-#endif
 
-#if __has_include("emqx_local.h")
-#include "emqx_local.h"
-#endif
-#ifndef BEPIO_EMQX_USERNAME
-#define BEPIO_EMQX_USERNAME ""
-#define BEPIO_EMQX_PASSWORD ""
-#endif
-
-#define MODEM UART_NUM_1
-#define HOST "p235d1e1.ala.cn-hangzhou.emqxsl.cn"
-#define TOPIC_UP "pager/demo/PC/inbox"
-#define TOPIC_DOWN "pager/demo/MN316/inbox"
-#define TOPIC_ACK TOPIC_UP
+#define MODEM BEPIO_MN316_UART_PORT
 #define AT_OK BIT0
 #define AT_ERROR BIT1
 #define TCP_READY BIT2
@@ -47,10 +31,8 @@
 #define CLOSED BIT4
 #define CLOCK_READY BIT5
 #define READER_EXIT BIT6
-
-extern const unsigned char ca_start[] asm("_binary_emqx_ca_pem_start");
-extern const unsigned char ca_end[] asm("_binary_emqx_ca_pem_end");
-static const char *TAG = "mn316_tls";
+#define TCP_RX_CHUNK_MAX 2048
+static const char *TAG = "mn316_transport";
 
 /* The console command owns UART1 until the reader has exited. The RX task
  * drains automatic NSORF URCs concurrently with slow TLS writes.
@@ -61,10 +43,12 @@ struct transport {
 	volatile bool stop;
 	int socket;
 	int sent;
+	int mqtt_state;
 	char ip[16];
 	time_t network_time;
 	int64_t network_time_at;
-	char line[3100];
+	/* Automatic TCP URCs can contain more than 1500 binary bytes, hex encoded. */
+	char line[TCP_RX_CHUNK_MAX * 2 + 128];
 	char command[850];
 };
 
@@ -87,11 +71,14 @@ static void parse_line(struct transport *t, char *line)
 		xEventGroupSetBits(t->events, AT_ERROR);
 	} else if (!strcmp(line, "CONNECT OK")) {
 		xEventGroupSetBits(t->events, TCP_READY);
+	} else if (!strncmp(line, "+MQTTSTAT:", 10)) {
+		t->mqtt_state = bepio_mn316_internal_mqtt_state(line);
 	} else if (sscanf(line, "+NSOCR: %d", &id) == 1) {
 		t->socket = id;
 	} else if (sscanf(line, "+NSOSD: %d,%d", &id, &length) == 2 && id == t->socket) {
 		t->sent = length;
 	} else if (sscanf(line, "+NSOCLI: %d", &id) == 1 && id == t->socket) {
+		ESP_LOGW(TAG, "TCP socket %d closed by modem/peer", id);
 		xEventGroupSetBits(t->events, CLOSED);
 	} else if (!strncmp(line, "+NSODROP:", 9)) {
 		ESP_LOGE(TAG, "Modem RX overflow; refusing corrupted TLS stream");
@@ -127,9 +114,11 @@ static void parse_line(struct transport *t, char *line)
 		}
 	} else if (sscanf(line, "+NSORF: %d,%*[^,],%*d,%d,%n", &id, &length, &offset) == 2 &&
 		   offset && id == t->socket) {
-		unsigned char decoded[1400];
+		unsigned char decoded[TCP_RX_CHUNK_MAX];
 		if (length < 0 || length > sizeof(decoded) || strlen(line + offset) < (size_t)length * 2 + 2 ||
 		    line[offset + length * 2] != ',') {
+			ESP_LOGE(TAG, "Invalid NSORF frame: payload=%d encoded=%u", length,
+				 (unsigned)strlen(line + offset));
 			xEventGroupSetBits(t->events, CLOSED);
 			return;
 		}
@@ -137,6 +126,7 @@ static void parse_line(struct transport *t, char *line)
 			int high = hex_digit(line[offset + i * 2]);
 			int low = hex_digit(line[offset + i * 2 + 1]);
 			if (high < 0 || low < 0) {
+				ESP_LOGE(TAG, "Invalid NSORF hex at byte %d", i);
 				xEventGroupSetBits(t->events, CLOSED);
 				return;
 			}
@@ -164,7 +154,10 @@ static void reader(void *argument)
 		for (int i = 0; i < n; i++) {
 			if (data[i] == '\r' || data[i] == '\n') {
 				t->line[used] = '\0';
-				if (overflow) xEventGroupSetBits(t->events, CLOSED);
+				if (overflow) {
+					ESP_LOGE(TAG, "UART response exceeds %u bytes", (unsigned)sizeof(t->line) - 1);
+					xEventGroupSetBits(t->events, CLOSED);
+				}
 				else if (used) parse_line(t, t->line);
 				used = 0;
 				overflow = false;
@@ -184,9 +177,10 @@ static int command(struct transport *t, const char *text, int timeout_ms)
 	if (uart_write_bytes(MODEM, text, size) != size || uart_write_bytes(MODEM, "\r\n", 2) != 2) return -1;
 	EventBits_t bits = xEventGroupWaitBits(t->events, AT_OK | AT_ERROR, pdTRUE, pdFALSE,
 					     pdMS_TO_TICKS(timeout_ms));
-	if (!(bits & AT_OK) || bits & AT_ERROR) {
-		ESP_LOGE(TAG, "AT transaction failed/timeout");
-		return -1;
+	if (bits & AT_ERROR) return -EIO; /* parse_line already logged the actual rejection. */
+	if (!(bits & AT_OK)) {
+		ESP_LOGE(TAG, "AT transaction timed out after %d ms", timeout_ms);
+		return -ETIMEDOUT;
 	}
 	return 0;
 }
@@ -236,179 +230,26 @@ static int tcp_receive(void *context, unsigned char *buffer, size_t length, uint
 	return n ? (int)n : MBEDTLS_ERR_SSL_TIMEOUT;
 }
 
-struct mqtt {
-	mbedtls_ssl_context *ssl;
-	unsigned char pending[2048];
-	size_t used;
-};
-
-static int tls_write_all(mbedtls_ssl_context *ssl, const unsigned char *data, size_t size)
+static int stream_read(void *context, unsigned char *data, size_t size)
 {
-	while (size) {
-		int n = mbedtls_ssl_write(ssl, data, size);
-		if (n <= 0) return n ? n : -1;
-		data += n;
-		size -= n;
-	}
-	return 0;
+	int ret = mbedtls_ssl_read(context, data, size);
+	if (ret == MBEDTLS_ERR_SSL_TIMEOUT) return -ETIMEDOUT;
+	if (ret == MBEDTLS_ERR_SSL_WANT_READ || ret == MBEDTLS_ERR_SSL_WANT_WRITE) return -EAGAIN;
+	return ret < 0 ? -EIO : ret;
 }
 
-static int mqtt_send(struct mqtt *m, unsigned char type, const unsigned char *body, size_t size)
+static int stream_write(void *context, const unsigned char *data, size_t size)
 {
-	unsigned char packet[1200];
-	if (size > sizeof(packet) - 5) return -1;
-	size_t n = size, used = 0;
-	packet[used++] = type;
-	do {
-		unsigned char digit = n % 128;
-		n /= 128;
-		packet[used++] = digit | (n ? 128 : 0);
-	} while (n);
-	memcpy(packet + used, body, size);
-	return tls_write_all(m->ssl, packet, used + size);
+	int ret = mbedtls_ssl_write(context, data, size);
+	return ret < 0 ? -EIO : ret;
 }
 
-static size_t mqtt_field(unsigned char *out, const char *text)
+static int tls_session_locked(const bepio_mn316_transport_config_t *config,
+	int (*session)(void *, const bepio_mn316_stream_t *), void *context)
 {
-	size_t n = strlen(text);
-	out[0] = n >> 8;
-	out[1] = n;
-	memcpy(out + 2, text, n);
-	return n + 2;
-}
-
-/* Retain partial MQTT packets across TCP/TLS read timeouts. */
-static int mqtt_receive(struct mqtt *m, unsigned char *type, unsigned char *body, size_t *size, int timeout_ms)
-{
-	int64_t deadline = esp_timer_get_time() + (int64_t)timeout_ms * 1000;
-	do {
-		size_t remaining = 0, h = 1;
-		bool complete = false;
-		while (h < m->used && h <= 4) {
-			unsigned char digit = m->pending[h++];
-			remaining |= (size_t)(digit & 127) << (7 * (h - 2));
-			if (!(digit & 128)) { complete = true; break; }
-		}
-		if ((!complete && h == 5) || remaining > 1024) return -1;
-		if (complete && m->used >= h + remaining) {
-			*type = m->pending[0];
-			*size = remaining;
-			memcpy(body, m->pending + h, remaining);
-			m->used -= h + remaining;
-			memmove(m->pending, m->pending + h + remaining, m->used);
-			return 1;
-		}
-		int n = mbedtls_ssl_read(m->ssl, m->pending + m->used, sizeof(m->pending) - m->used);
-		if (n > 0) m->used += n;
-		else if (n != MBEDTLS_ERR_SSL_TIMEOUT && n != MBEDTLS_ERR_SSL_WANT_READ) return -1;
-	} while (esp_timer_get_time() < deadline);
-	return 0;
-}
-
-static int publish(struct mqtt *m, const char *topic, const unsigned char *payload, size_t size)
-{
-	unsigned char body[1024];
-	if (strlen(topic) + 2 + size > sizeof(body)) return -1;
-	size_t n = mqtt_field(body, topic);
-	memcpy(body + n, payload, size);
-	return mqtt_send(m, 0x30, body, n + size);
-}
-
-static int mqtt_test(mbedtls_ssl_context *ssl, const bepio_mn316_tls_credentials_t *credentials, int seconds)
-{
-	struct mqtt *m = calloc(1, sizeof(*m));
-	if (!m) return -1;
-	m->ssl = ssl;
-	unsigned char body[1024], type;
-	size_t size;
-	int ret = -1;
-	size_t n = mqtt_field(body, "MQTT");
-	body[n++] = 4; body[n++] = 0xc2; body[n++] = 0; body[n++] = 60;
-	n += mqtt_field(body + n, BEPIO_PAGER_DEVICE);
-	n += mqtt_field(body + n, credentials->username);
-	n += mqtt_field(body + n, credentials->password);
-	if (mqtt_send(m, 0x10, body, n) || mqtt_receive(m, &type, body, &size, 30000) != 1 ||
-	    type != 0x20 || size != 2 || body[1] != 0) {
-		ESP_LOGE(TAG, "MQTT CONNACK rejected or timed out");
-		goto out;
-	}
-	ESP_LOGI(TAG, "MQTT login PASS via MN316 TCP + ESP32 TLS");
-	body[0] = 0; body[1] = 1;
-	n = 2 + mqtt_field(body + 2, TOPIC_DOWN);
-	body[n++] = 0;
-	if (mqtt_send(m, 0x82, body, n) || mqtt_receive(m, &type, body, &size, 30000) != 1 ||
-	    type != 0x90 || size != 3 || body[0] != 0 || body[1] != 1 || body[2] != 0) {
-		ESP_LOGE(TAG, "MQTT SUBACK failed");
-		goto out;
-	}
-	struct bepio_pager_message message = {0};
-	char json[BEPIO_PAGER_WIRE_MAX];
-	strcpy(message.from, BEPIO_PAGER_DEVICE);
-	strcpy(message.to, "Pager_PC");
-	strcpy(message.text, "MN316 TLS test message");
-	if (bepio_pager_message_now(&message) || bepio_pager_message_encode(&message, json, sizeof(json)) ||
-	    publish(m, TOPIC_UP, (const unsigned char *)json, strlen(json))) goto out;
-	ESP_LOGI(TAG, "Subscribed %s; published %s", TOPIC_DOWN, TOPIC_UP);
-	ESP_LOGI(TAG, "Listening %ds; incoming messages will be echoed to %s", seconds, TOPIC_ACK);
-	int64_t deadline = esp_timer_get_time() + (int64_t)seconds * 1000000;
-	int64_t next_ping = esp_timer_get_time() + 20000000;
-	while (esp_timer_get_time() < deadline) {
-		int received = mqtt_receive(m, &type, body, &size, 1000);
-		if (received < 0) goto out;
-		if (received && type == 0x30 && size >= 2) {
-			size_t topic_size = ((size_t)body[0] << 8) | body[1];
-			if (topic_size + 2 > size) goto out;
-			if (topic_size == strlen(TOPIC_DOWN) && !memcmp(body + 2, TOPIC_DOWN, topic_size)) {
-				unsigned char *payload = body + 2 + topic_size;
-				size_t count = size - 2 - topic_size;
-				if (bepio_pager_message_parse(payload, count, &message)) {
-					ESP_LOGW(TAG, "MESSAGE REJECTED: invalid From/To/Text/Datetime/At");
-					goto heartbeat;
-				}
-				if (strcmp(message.to, BEPIO_PAGER_DEVICE)) {
-					ESP_LOGW(TAG, "MESSAGE IGNORED: To is not this device");
-					goto heartbeat;
-				}
-				ESP_LOGI(TAG, "DOWNLINK PASS bytes=%u", (unsigned)count);
-				/* Reply location belongs to this device, not to the sender.
-				 * No location sensor is connected in this test application.
-				 */
-				strcpy(message.to, message.from);
-				strcpy(message.from, BEPIO_PAGER_DEVICE);
-				message.has_location = false;
-				message.address[0] = '\0';
-				if (bepio_pager_message_now(&message) ||
-				    bepio_pager_message_encode(&message, json, sizeof(json)) ||
-				    publish(m, TOPIC_ACK, (const unsigned char *)json, strlen(json))) goto out;
-				ESP_LOGI(TAG, "Pager reply sent over verified TLS");
-			}
-		} else if (received && type == 0xd0) ESP_LOGI(TAG, "PINGRESP");
-heartbeat:
-		if (esp_timer_get_time() >= next_ping) {
-			if (mqtt_send(m, 0xc0, body, 0)) goto out;
-			next_ping = esp_timer_get_time() + 20000000;
-		}
-	}
-	ret = mqtt_send(m, 0xe0, body, 0);
-out:
-	memset(body, 0, sizeof(body));
-	free(m);
-	return ret;
-}
-
-int bepio_mn316_tls_run(const bepio_mn316_tls_credentials_t *credentials, int seconds)
-{
-	int restore_baud = credentials && credentials->uart_baud > 0 ?
-		credentials->uart_baud : BEPIO_MN316_BAUD_RATE;
-	if (!credentials || !credentials->username || !credentials->password ||
-	    !credentials->username[0] || !credentials->password[0] ||
-	    strlen(credentials->username) > 128 || strlen(credentials->password) > 128 ||
-	    seconds < 1 || seconds > 600) {
-		ESP_LOGE(TAG, "Invalid MQTT credentials or listen duration");
-		return 1;
-	}
+	int restore_baud = config->restore_baud > 0 ? config->restore_baud : BEPIO_MN316_BAUD_RATE;
 	struct transport *t = calloc(1, sizeof(*t));
-	if (!t) return 1;
+	if (!t) return -ENOMEM;
 	t->socket = -1;
 	t->events = xEventGroupCreate();
 	t->incoming = xStreamBufferCreate(32768, 1);
@@ -435,10 +276,28 @@ int bepio_mn316_tls_run(const bepio_mn316_tls_credentials_t *credentials, int se
 	fast_uart = true;
 	if (switch_baud(t, 115200)) goto cleanup;
 	ESP_LOGI(TAG, "Modem UART temporarily switched to 115200 for TLS");
-	/* The internal MQTT client is independent of our TLS/MQTT session. */
-	command(t, "AT+MQTTDISC", 5000);
-	vTaskDelay(pdMS_TO_TICKS(1000));
-	command(t, "AT+MQTTDEL", 5000);
+	/* No built-in client is normally allocated: DISC/DEL in state 0 produces
+	 * CME 8002. Preserve real query/cleanup errors rather than masking them.
+	 */
+	t->mqtt_state = -1;
+	if (command(t, "AT+MQTTSTAT?", 3000) || t->mqtt_state < 0) {
+		ESP_LOGE(TAG, "Cannot query internal MQTT state");
+		goto cleanup;
+	}
+	if (t->mqtt_state == 0) {
+		ESP_LOGI(TAG, "No internal MQTT client; skipping DISC/DEL");
+	} else {
+		if (t->mqtt_state >= 3) {
+			if (command(t, "AT+MQTTDISC", 5000)) goto cleanup;
+			vTaskDelay(pdMS_TO_TICKS(1000));
+		}
+		if (command(t, "AT+MQTTDEL", 5000)) goto cleanup;
+		t->mqtt_state = -1;
+		if (command(t, "AT+MQTTSTAT?", 3000) || t->mqtt_state != 0) {
+			ESP_LOGE(TAG, "Internal MQTT client cleanup did not reach state 0");
+			goto cleanup;
+		}
+	}
 	xEventGroupClearBits(t->events, CLOCK_READY | CLOSED | AT_ERROR);
 	if (command(t, "AT+CCLK?", 3000) || await_event(t, CLOCK_READY, 3000)) {
 		ESP_LOGE(TAG, "No valid modem network time; certificate date checks remain enabled");
@@ -448,15 +307,16 @@ int bepio_mn316_tls_run(const bepio_mn316_tls_credentials_t *credentials, int se
 	if (settimeofday(&tv, NULL)) goto cleanup;
 	ESP_LOGI(TAG, "Network UTC epoch=%lld", (long long)tv.tv_sec);
 	xEventGroupClearBits(t->events, DNS_READY);
-	if (command(t, "AT+CMDNS=\"" HOST "\"", 5000) || await_event(t, DNS_READY, 120000)) {
+	snprintf(t->command, sizeof(t->command), "AT+CMDNS=\"%s\"", config->host);
+	if (command(t, t->command, 5000) || await_event(t, DNS_READY, 120000)) {
 		ESP_LOGE(TAG, "Cellular DNS failed"); goto cleanup;
 	}
-	ESP_LOGI(TAG, "Cellular DNS %s -> %s", HOST, t->ip);
+	ESP_LOGI(TAG, "Cellular DNS %s -> %s", config->host, t->ip);
 	if (command(t, "AT+NSOCR=STREAM,6,0,2", 5000) || t->socket < 0) goto cleanup;
 	snprintf(t->command, sizeof(t->command), "AT+NSOCFG=%d,1,1", t->socket);
 	if (command(t, t->command, 5000)) goto cleanup;
 	xEventGroupClearBits(t->events, TCP_READY | CLOSED);
-	snprintf(t->command, sizeof(t->command), "AT+NSOCO=%d,%s,8883", t->socket, t->ip);
+	snprintf(t->command, sizeof(t->command), "AT+NSOCO=%d,%s,%u", t->socket, t->ip, (unsigned)config->port);
 	if (command(t, t->command, 5000) || await_event(t, TCP_READY, 60000)) {
 		ESP_LOGE(TAG, "Cellular TCP connect failed"); goto cleanup;
 	}
@@ -464,7 +324,7 @@ int bepio_mn316_tls_run(const bepio_mn316_tls_credentials_t *credentials, int se
 	ret = mbedtls_ctr_drbg_seed(&drbg, mbedtls_entropy_func, &entropy,
 				  (const unsigned char *)"bepio-mn316-tls", 16);
 	if (ret) goto cleanup;
-	ret = mbedtls_x509_crt_parse(&ca, ca_start, ca_end - ca_start);
+	ret = mbedtls_x509_crt_parse(&ca, config->ca, config->ca_size);
 	if (ret) goto cleanup;
 	ret = mbedtls_ssl_config_defaults(&conf, MBEDTLS_SSL_IS_CLIENT, MBEDTLS_SSL_TRANSPORT_STREAM, MBEDTLS_SSL_PRESET_DEFAULT);
 	if (ret) goto cleanup;
@@ -474,7 +334,7 @@ int bepio_mn316_tls_run(const bepio_mn316_tls_credentials_t *credentials, int se
 	mbedtls_ssl_conf_read_timeout(&conf, 30000);
 	ret = mbedtls_ssl_setup(&ssl, &conf);
 	if (ret) goto cleanup;
-	ret = mbedtls_ssl_set_hostname(&ssl, HOST);
+	ret = mbedtls_ssl_set_hostname(&ssl, config->host);
 	if (ret) goto cleanup;
 	mbedtls_ssl_set_bio(&ssl, t, tcp_send, NULL, tcp_receive);
 	int64_t handshake_deadline = esp_timer_get_time() + 180000000;
@@ -489,7 +349,8 @@ int bepio_mn316_tls_run(const bepio_mn316_tls_credentials_t *credentials, int se
 	}
 	ESP_LOGI(TAG, "TLS PASS %s %s; CA, hostname and validity verified", mbedtls_ssl_get_version(&ssl), mbedtls_ssl_get_ciphersuite(&ssl));
 	mbedtls_ssl_conf_read_timeout(&conf, 1000);
-	ret = mqtt_test(&ssl, credentials, seconds);
+	const bepio_mn316_stream_t stream = {.context = &ssl, .read = stream_read, .write = stream_write};
+	ret = session(context, &stream);
 	if (!ret) mbedtls_ssl_close_notify(&ssl);
 cleanup:
 	if (running) {
@@ -518,25 +379,24 @@ cleanup:
 	if (ret) {
 		char reason[160];
 		mbedtls_strerror(ret, reason, sizeof(reason));
-		ESP_LOGE(TAG, "TLS/MQTT test failed ret=%d (%s)", ret, reason);
-	} else ESP_LOGI(TAG, "TLS/MQTT session completed");
-	return ret ? 1 : 0;
+		ESP_LOGE(TAG, "TLS/session failed ret=%d (%s)", ret, reason);
+	} else ESP_LOGI(TAG, "TLS session completed");
+	return ret;
 }
 
-int bepio_mn316_tls_command(int argc, char **argv)
+
+int bepio_mn316_driver_tls(const bepio_mn316_transport_config_t *config,
+	int (*session)(void *, const bepio_mn316_stream_t *), void *context)
 {
-	int seconds = 120;
-	if (argc > 2) return 1;
-	if (argc == 2) {
-		char *end;
-		long value = strtol(argv[1], &end, 10);
-		if (!argv[1][0] || *end || value < 1 || value > 600) return 1;
-		seconds = (int)value;
+	if (!config || !config->host || !config->host[0] || strlen(config->host) > 127 ||
+	    !config->port || !config->ca || !config->ca_size || !session) return -EINVAL;
+	for (const char *p = config->host; *p; p++) {
+		if (!((*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z') ||
+		      (*p >= '0' && *p <= '9') || *p == '.' || *p == '-')) return -EINVAL;
 	}
-	const bepio_mn316_tls_credentials_t credentials = {
-		.username = BEPIO_EMQX_USERNAME,
-		.password = BEPIO_EMQX_PASSWORD,
-		.uart_baud = CONFIG_BEPIO_MN316_BAUD,
-	};
-	return bepio_mn316_tls_run(&credentials, seconds);
+	int ret = bepio_mn316_driver_acquire();
+	if (ret) return ret;
+	ret = tls_session_locked(config, session, context);
+	bepio_mn316_driver_release();
+	return ret;
 }

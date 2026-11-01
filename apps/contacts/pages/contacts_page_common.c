@@ -1,4 +1,5 @@
 #include "contacts_list.h"
+#include "contacts_detail.h"
 #include "contacts_page_common.h"
 #include "contacts_edit.h"
 #include <errno.h>
@@ -15,8 +16,9 @@ bepio_contacts_page_context_t *bepio_contacts_page_alloc(size_t size,
 
 static void page_back(lv_event_t *event)
 {
-	(void)event;
-	contacts_controller_back(contacts_app_get_controller());
+	bepio_contacts_page_context_t *ctx = lv_event_get_user_data(event);
+	if (ctx->model->flow.page == CONTACTS_PAGE_EDIT) { bepio_contacts_edit_request_back(ctx); }
+	else { contacts_controller_back(contacts_app_get_controller()); }
 }
 
 lv_obj_t *bepio_contacts_page_begin(bepio_contacts_page_context_t *ctx,
@@ -115,10 +117,11 @@ void bepio_contacts_page_action(lv_event_t *event)
 		ret = bepio_contacts_edit_page_sync(ctx);
 		if (!ret) { ret = contacts_controller_save(c); }
 		break;
-	case ACT_BACK: contacts_controller_back(c); break;
-	case ACT_DELETE: ret = contacts_controller_request_delete(c); break;
-	case ACT_DELETE_YES: ret = contacts_controller_confirm_delete(c); break;
-	case ACT_DISCARD: ret = contacts_controller_discard(c); break;
+	case ACT_BACK:
+		if (ctx->model->flow.page == CONTACTS_PAGE_EDIT) { bepio_contacts_edit_request_back(ctx); }
+		else { contacts_controller_back(c); }
+		break;
+	case ACT_DELETE: ret = bepio_contacts_detail_show_delete_sheet(ctx); break;
 	case ACT_NEXT: bepio_contacts_list_page_advance(ctx, 1); break;
 	case ACT_PREVIOUS: bepio_contacts_list_page_advance(ctx, -1); break;
 	}

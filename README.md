@@ -75,10 +75,10 @@ settings set hour_24 0
 settings about
 settings back
 settings back
-contacts add "妈妈" +8613800000000
+contacts add "妈妈" 8613800000000
 contacts list
 contacts back
-messages new +8613800000000 "妈妈"
+messages new 8613800000000 "妈妈"
 messages text "我到家了。"
 messages send
 messages confirm

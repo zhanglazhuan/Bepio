@@ -1,10 +1,16 @@
 #include "messages_confirm.h"
-#include <stdlib.h>
 #include "messages_page_context.h"
 #include "messages_page_common.h"
 
-static void messages_confirm_page_render(messages_page_context_t *ctx)
+lv_obj_t *messages_confirm_build(void *app, void *payload)
 {
+	(void)payload;
+	messages_view_t *view = app;
+	Page page = lv_page_create("Messages", true, messages_page_back, view);
+	if (!page.screen || !page.container) { return NULL; }
+	messages_page_context_t *ctx = messages_page_alloc(sizeof(*ctx), view);
+	if (!ctx) { return messages_page_finish(view, page, NULL); }
+	messages_page_prepare(ctx, page, "Messages");
 	lv_obj_t *root = ctx->root;
 	messages_model_t *model = ctx->controller->model;
 	messages_pending_t pending = model->pending;
@@ -27,17 +33,6 @@ static void messages_confirm_page_render(messages_page_context_t *ctx)
 			"Confirm delete" : "Confirm queue", ACT_CONFIRM, 0x346bd3);
 	}
 	messages_page_button(ctx, root, "Cancel", ACT_CANCEL, 0x263c5c);
-}
-
-lv_obj_t *messages_confirm_build(void *app, void *payload)
-{
-	(void)payload;
-	messages_view_t *view = app;
-	messages_page_context_t *ctx = messages_page_alloc(sizeof(messages_page_context_t), view);
-	if (!ctx) { return NULL; }
-	lv_obj_t *screen = messages_page_begin(ctx, "Messages");
-	if (!screen) { free(ctx); return NULL; }
-	messages_confirm_page_render(ctx);
-	return messages_page_finish(ctx);
+	return messages_page_finish(view, page, ctx);
 }
 

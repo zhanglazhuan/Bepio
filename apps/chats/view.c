@@ -1,5 +1,5 @@
 #include "view.h"
-#include "pages/chats_page.h"
+#include "pages/chats_main.h"
 #include "lvgl.h"
 #include <stdlib.h>
 
@@ -21,7 +21,7 @@ int bepio_chats_view_open(void *root, void *group, bepio_chats_controller_t *con
 	(void)group;
 	view.controller = controller;
 	page_navigator_init(&view.page_nav, view.page_registry, 1, &view);
-	page_navigator_register_page(&view.page_nav, 1, bepio_chats_page_build);
+	page_navigator_register_page(&view.page_nav, 1, bepio_chats_main_build);
 	page_navigator_navigate_to(&view.page_nav, &view, 1, NULL);
 	return view.page_nav.current_page == 1 ? 0 : -1;
 }

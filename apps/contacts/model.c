@@ -52,6 +52,8 @@ static int find_index(const contacts_model_t *model, uint32_t id)
 	return -ENOENT;
 }
 
+#include "../../modules/pager_id.h"
+
 static int validate(const char *name, const char *phone)
 {
 	bool has_name = false;
@@ -74,16 +76,8 @@ static int validate(const char *name, const char *phone)
 	if (!has_name) {
 		return -EINVAL;
 	}
-	for (length = 0; phone[length]; length++) {
-		if (length == CONTACTS_PHONE_MAX) {
-			return -ENAMETOOLONG;
-		}
-		if (!(length == 0 && phone[length] == '+') &&
-		    (phone[length] < '0' || phone[length] > '9')) {
-			return -EINVAL;
-		}
-	}
-	return length == 1 && phone[0] == '+' ? -EINVAL : 0;
+	if (strnlen(phone, CONTACTS_PHONE_MAX + 1) > CONTACTS_PHONE_MAX) return -ENAMETOOLONG;
+	return bepio_pager_id_valid(phone, CONTACTS_PHONE_MAX) ? 0 : -EINVAL;
 }
 
 static bool duplicate_phone(const contacts_model_t *model, const char *phone, uint32_t except)
@@ -125,7 +119,16 @@ int bepio_contacts_model_restore(contacts_model_t *model)
 		memcpy(e->name, p + 4, sizeof(e->name));
 		memcpy(e->phone, p + 4 + sizeof(e->name), sizeof(e->phone));
 		if (!memchr(e->name, 0, sizeof(e->name)) || !memchr(e->phone, 0, sizeof(e->phone)) ||
-		    !e->id || (loaded->next_id && e->id >= loaded->next_id) || p[STORE_RECORD - 1] > 1 || validate(e->name, e->phone)) { goto done; }
+		    !e->id || (loaded->next_id && e->id >= loaded->next_id) || p[STORE_RECORD - 1] > 1) { goto done; }
+		/* Existing international numbers become decimal IDs without losing the
+		 * contact. Old nonnumeric demo IDs remain editable, but cannot be sent. */
+		if (e->phone[0] == '+' && bepio_pager_id_valid(e->phone + 1, CONTACTS_PHONE_MAX - 1)) {
+			memmove(e->phone, e->phone + 1, strlen(e->phone));
+		}
+		if (validate(e->name, e->phone) &&
+		    !(validate(e->name, "1") == 0 && strncmp(e->phone, "Pager_", 6) == 0 && e->phone[6] &&
+		      strspn(e->phone + 6, "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-") ==
+		      strlen(e->phone + 6))) { goto done; }
 		e->favorite = p[STORE_RECORD - 1];
 		for (size_t j = 0; j < i; j++) {
 			if (loaded->entries[j].id == e->id || !strcmp(loaded->entries[j].phone, e->phone)) { goto done; }

@@ -13,7 +13,7 @@ typedef struct {
 	void *group;
 	contacts_model_t *model;
 	page_navigator_t page_nav;
-	page_navigator_page_t page_registry[5];
+	page_navigator_page_t page_registry[3];
 } contacts_view_t;
 
 void contacts_view_init(contacts_view_t *view, void *root, void *group);

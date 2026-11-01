@@ -23,7 +23,7 @@ int mn316_probe(void)
 	bool overflow = false;
 	unsigned char byte;
 
-	/* Called synchronously at startup, before any modem worker is started. */
+	/* Driver initialization serializes probing with active UART sessions. */
 	if (!uart_is_driver_installed(port) &&
 	    uart_driver_install(port, 16384, 0, 0, NULL, 0) != ESP_OK) {
 		return -ENODEV;

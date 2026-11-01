@@ -3,6 +3,9 @@
 #include <errno.h>
 #include <string.h>
 #include "bepio_mutex.h"
+#if defined(ESP_PLATFORM) && defined(CONFIG_BEPIO_MN316)
+#include "bepio_mn316_manager.h"
+#endif
 #ifdef CONFIG_BEPIO_APP_CONTACTS
 #include "apps/contacts/app.h"
 #endif
@@ -419,6 +422,43 @@ int messages_controller_send(messages_controller_t *c)
 	return ret;
 }
 
+static int submit_editor(messages_controller_t *c, uint32_t *id)
+{
+	int ret = bepio_messaging_submit(c->model->draft_id, &c->model->editor, id);
+	if (!ret) {
+		messages_model_discard(c->model);
+		c->model->flow.page = MESSAGES_PAGE_DETAIL;
+		c->model->flow.box = BEPIO_MESSAGE_OUTBOX;
+		c->model->flow.selected_id = *id;
+	}
+	return ret;
+}
+
+static void activate_transport(void)
+{
+#if defined(ESP_PLATFORM) && defined(CONFIG_BEPIO_MN316)
+	int ret = bepio_mn316_manager_emqx_start();
+	if (ret) {
+		BEPIO_LOGW("MN316 send queued; transport unavailable (%d)", ret);
+	}
+#endif
+}
+
+int messages_controller_send_now(messages_controller_t *c, uint32_t *id)
+{
+	int ret;
+	if (!id) { return -EINVAL; }
+	bepio_mutex_lock(messages_lock);
+	ret = ready(c, false);
+	if (!ret && !c->model->editing) { ret = -EPERM; }
+	if (!ret) { ret = bepio_messaging_validate(&c->model->editor, true); }
+	if (!ret) { ret = submit_editor(c, id); }
+	if (!ret) { show_page(c); }
+	bepio_mutex_unlock(messages_lock);
+	if (!ret) { activate_transport(); }
+	return ret;
+}
+
 int messages_controller_delete(messages_controller_t *c, bepio_message_box_t box, uint32_t id)
 {
 	bepio_message_t message;
@@ -444,6 +484,7 @@ int messages_controller_delete(messages_controller_t *c, bepio_message_box_t box
 int messages_controller_confirm(messages_controller_t *c, uint32_t *id)
 {
 	int ret = -EPERM;
+	bool sent = false;
 
 	if (!id) {
 		return -EINVAL;
@@ -452,13 +493,8 @@ int messages_controller_confirm(messages_controller_t *c, uint32_t *id)
 	if (!c->active) {
 		ret = -EACCES;
 	} else if (c->model->pending == MESSAGES_PENDING_SEND) {
-		ret = bepio_messaging_submit(c->model->draft_id, &c->model->editor, id);
-		if (!ret) {
-			messages_model_discard(c->model);
-			c->model->flow.page = MESSAGES_PAGE_DETAIL;
-			c->model->flow.box = BEPIO_MESSAGE_OUTBOX;
-			c->model->flow.selected_id = *id;
-		}
+		ret = submit_editor(c, id);
+		sent = !ret;
 	} else if (c->model->pending == MESSAGES_PENDING_DELETE) {
 		ret = bepio_messaging_delete(c->model->pending_box, c->model->pending_id);
 		if (!ret || ret == -ENOENT) {
@@ -472,6 +508,7 @@ int messages_controller_confirm(messages_controller_t *c, uint32_t *id)
 		show_page(c);
 	}
 	bepio_mutex_unlock(messages_lock);
+	if (sent) { activate_transport(); }
 	return ret;
 }
 
@@ -508,5 +545,6 @@ int messages_controller_retry(messages_controller_t *c, uint32_t id)
 		show_page(c);
 	}
 	bepio_mutex_unlock(messages_lock);
+	if (!ret) { activate_transport(); }
 	return ret;
 }

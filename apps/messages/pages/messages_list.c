@@ -1,5 +1,4 @@
 #include "messages_list.h"
-#include <stdlib.h>
 #include "messages_page_context.h"
 #include "messages_page_common.h"
 #include <stdio.h>
@@ -17,11 +16,19 @@ static void open_message(lv_event_t *event)
 	}
 }
 
-
-static void messages_list_page_render(messages_page_context_t *ctx)
+lv_obj_t *messages_list_build(void *app, void *payload)
 {
+	(void)payload;
+	messages_view_t *view = app;
+	messages_controller_t *controller = view->controller;
+	Page page = lv_page_create("Messages",
+		controller->model->flow.page == MESSAGES_PAGE_BOX,
+		messages_page_back, view);
+	if (!page.screen || !page.container) { return NULL; }
+	messages_page_context_t *ctx = messages_page_alloc(sizeof(*ctx), view);
+	if (!ctx) { return messages_page_finish(view, page, NULL); }
+	messages_page_prepare(ctx, page, "Messages");
 	lv_obj_t *root = ctx->root;
-	messages_controller_t *controller = ctx->controller;
 	lv_obj_t *header_right = lv_page_header_right(root);
 	if (header_right) {
 		lv_obj_t *add = messages_page_button(ctx, header_right, LV_SYMBOL_PLUS, ACT_NEW, 0x346bd3);
@@ -35,8 +42,6 @@ static void messages_list_page_render(messages_page_context_t *ctx)
 			lv_obj_get_style_text_color(lv_obj_get_parent(header_right), 0), 0);
 		lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
 		lv_obj_center(label);
-	} else {
-		messages_page_button(ctx, root, LV_SYMBOL_PLUS " New", ACT_NEW, 0x346bd3);
 	}
 	size_t matches = 0;
 	bepio_message_t message;
@@ -70,17 +75,5 @@ static void messages_list_page_render(messages_page_context_t *ctx)
 		matches++;
 	}
 	if (!matches) { messages_page_text(root, "No messages yet", 0xa8bad2); }
+	return messages_page_finish(view, page, ctx);
 }
-
-lv_obj_t *messages_list_build(void *app, void *payload)
-{
-	(void)payload;
-	messages_view_t *view = app;
-	messages_page_context_t *ctx = messages_page_alloc(sizeof(messages_page_context_t), view);
-	if (!ctx) { return NULL; }
-	lv_obj_t *screen = messages_page_begin(ctx, "Messages");
-	if (!screen) { free(ctx); return NULL; }
-	messages_list_page_render(ctx);
-	return messages_page_finish(ctx);
-}
-

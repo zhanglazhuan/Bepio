@@ -5,6 +5,7 @@
 #include "controller.h"
 #include "demo.h"
 #include "lv_page.h"
+#include "system/uilv/imgs/icon_28x28/bepio_icons_28.h"
 #include "apps/contacts/app.h"
 #include "bepio_app_manager.h"
 
@@ -68,6 +69,21 @@ static lv_obj_t *find_label(lv_obj_t *parent, const char *value)
 		if (found) { return found; }
 	}
 	return NULL;
+}
+static lv_obj_t *find_image(lv_obj_t *parent, const void *source)
+{
+	if (lv_obj_check_type(parent, &lv_image_class) && lv_image_get_src(parent) == source) { return parent; }
+	for (uint32_t i = 0; i < lv_obj_get_child_count(parent); i++) {
+		lv_obj_t *found = find_image(lv_obj_get_child(parent, i), source);
+		if (found) { return found; }
+	}
+	return NULL;
+}
+static lv_obj_t *send_button(void)
+{
+	lv_obj_t *icon = find_image(active_page().header_right, &ic_send_28);
+	assert(icon);
+	return lv_obj_get_parent(icon);
 }
 static void click(const char *value)
 {
@@ -156,18 +172,16 @@ int main(int argc, char **argv)
 	click("Alex");
 	assert(model.flow.page == MESSAGES_PAGE_DETAIL);
 	assert(find_label(root, LV_SYMBOL_PLAY "  Play voice"));
+	assert(!find_label(root, "Delete message"));
 	capture(argv[1], "chat");
 	assert(messages_controller_back(&controller));
 	click("* Bepio Lab");
 	assert(model.flow.page == MESSAGES_PAGE_DETAIL);
+	assert(!find_label(root, "Delete message"));
 	capture(argv[1], "detail");
-	click("Delete message");
-	capture(argv[1], "delete");
-	click("Cancel");
 	bepio_messaging_stats_t stats;
 	bepio_messaging_stats(&stats); assert(stats.inbox == 3 && stats.unread == 1);
-	click("Delete message"); click("Confirm delete");
-	bepio_messaging_stats(&stats); assert(stats.inbox == 2);
+	assert(messages_controller_back(&controller));
 	unsigned field_index = 0;
 	assert(!find_textarea(root, &field_index));
 	assert(!find_label(root, "Go"));
@@ -181,31 +195,82 @@ int main(int argc, char **argv)
 	assert(model.flow.page == MESSAGES_PAGE_COMPOSE);
 	assert(lv_dropdown_get_option_count(dropdown()) == 4);
 	assert(lv_dropdown_get_selected(dropdown()) == 0);
-	assert(lv_obj_has_state(lv_obj_get_parent(find_label(root, "Review & queue")), LV_STATE_DISABLED));
+	select_contact(1);
+	assert(lv_obj_has_state(send_button(), LV_STATE_DISABLED));
+	select_contact(0);
+	assert(!find_label(root, "Send") && !find_label(active_page().header_right, "Send"));
+	assert(!find_label(root, "Save draft") && !find_label(root, "Review & queue"));
+	assert(lv_obj_has_state(send_button(), LV_STATE_DISABLED));
+	lv_obj_update_layout(active_page().screen);
+	lv_area_t send_bounds;
+	lv_obj_get_coords(send_button(), &send_bounds);
+	assert(send_bounds.x2 == PREVIEW_WIDTH - 1 && send_bounds.y2 < LV_STATUS_BAR_HEIGHT + LV_PAGE_HEADER_HEIGHT);
+	lv_obj_t *body_input = textarea(0);
+	lv_obj_send_event(body_input, LV_EVENT_FOCUSED, NULL);
+	lv_obj_update_layout(lv_screen_active());
+	lv_area_t body_bounds, keyboard_bounds;
+	lv_obj_get_coords(body_input, &body_bounds);
+	bool keyboard_found = false;
+	for (uint32_t i = 0; i < lv_obj_get_child_count(lv_screen_active()); i++) {
+		lv_obj_t *child = lv_obj_get_child(lv_screen_active(), i);
+		if (lv_obj_check_type(child, &lv_keyboard_class)) {
+			keyboard_found = true;
+			lv_obj_get_coords(child, &keyboard_bounds);
+			assert(body_bounds.y2 < keyboard_bounds.y1);
+			break;
+		}
+	}
+	assert(keyboard_found);
+	lv_textarea_set_text(body_input, "Line one\nLine two\nLine three\nLine four\nLine five");
+	lv_obj_update_layout(lv_screen_active());
+	lv_obj_get_coords(body_input, &body_bounds);
+	assert(body_bounds.y2 < keyboard_bounds.y1);
+	lv_obj_t *body_label = lv_textarea_get_label(body_input);
+	lv_point_t cursor_position;
+	lv_label_get_letter_pos(body_label, lv_textarea_get_cursor_pos(body_input), &cursor_position);
+	int32_t visible_top = lv_obj_get_scroll_top(body_input);
+	int32_t line_height = lv_font_get_line_height(
+		lv_obj_get_style_text_font(body_input, LV_PART_MAIN));
+	assert(cursor_position.y >= visible_top);
+	assert(cursor_position.y + line_height <= visible_top + lv_obj_get_content_height(body_input));
+	capture(argv[1], "compose-keyboard");
 	lv_textarea_set_text(textarea(0), "Hello from the interactive preview!");
 	select_contact(3);
 	assert(!strcmp(model.editor.phone, "13600136000") && !strcmp(model.editor.name, "Test Person"));
 	assert(!strcmp(lv_textarea_get_text(textarea(0)), "Hello from the interactive preview!"));
-	assert(!lv_obj_has_state(lv_obj_get_parent(find_label(root, "Review & queue")), LV_STATE_DISABLED));
+	assert(!lv_obj_has_state(send_button(), LV_STATE_DISABLED));
 	unsigned extra_field = 1;
 	assert(!find_textarea(root, &extra_field));
 	lv_dropdown_open(dropdown());
 	capture(argv[1], "recipients");
 	lv_dropdown_close(dropdown());
+	for (uint32_t i = 0; i < lv_obj_get_child_count(lv_screen_active()); i++) {
+		lv_obj_t *child = lv_obj_get_child(lv_screen_active(), i);
+		if (lv_obj_check_type(child, &lv_keyboard_class)) {
+			lv_obj_send_event(child, LV_EVENT_READY, NULL);
+			break;
+		}
+	}
+	assert(!lv_obj_has_state(send_button(), LV_STATE_DISABLED));
 	capture(argv[1], "compose");
-	click("Save draft");
+	uint32_t draft_id;
+	assert(messages_controller_save(&controller, &draft_id) == 0);
 	bepio_messaging_stats(&stats); assert(stats.outbox == 3);
 	assert(model.flow.page == MESSAGES_PAGE_BOX);
 	capture(argv[1], "outbox");
 	/* Return to the default inbox, then switch back to the saved draft. */
 	assert(messages_controller_home(&controller) == 0);
 	assert(messages_controller_box(&controller, BEPIO_MESSAGE_OUTBOX) == 0);
-	click("Test Person"); click("Edit draft");
+	click("Test Person");
+	assert(!find_label(root, "Delete message"));
+	click("Edit draft");
 	assert(lv_dropdown_get_selected(dropdown()) == 3);
 	lv_textarea_set_text(textarea(0), "Updated message");
-	click("Review & queue"); capture(argv[1], "review");
-	click("Confirm queue");
+	lv_obj_send_event(send_button(), LV_EVENT_CLICKED, NULL);
+	lv_timer_handler();
+	assert(model.pending == MESSAGES_PENDING_NONE);
 	bepio_messaging_stats(&stats); assert(stats.queued == 1 && stats.outbox == 3);
+	assert(!find_label(root, "Delete message"));
 	capture(argv[1], "queued");
 	lv_obj_send_event(lv_obj_get_child(active_page().header, 0), LV_EVENT_CLICKED, NULL);
 	assert(model.flow.page == MESSAGES_PAGE_BOX);
@@ -224,7 +289,7 @@ int main(int argc, char **argv)
 	/* Unknown recipients in replies/old drafts cannot bypass the selector. */
 	assert(messages_controller_new(&controller, "13500135000", "Unknown") == 0);
 	assert(lv_dropdown_get_selected(dropdown()) == 0);
-	assert(lv_obj_has_state(lv_obj_get_parent(find_label(root, "Review & queue")), LV_STATE_DISABLED));
+	assert(lv_obj_has_state(send_button(), LV_STATE_DISABLED));
 	assert(messages_controller_discard(&controller) == 0);
 	/* Simulate deleting contacts while Messages is closed, then reopen compose. */
 	assert(bepio_app_manager_show(NULL, NULL, NULL, "Contacts") == 0);
@@ -236,9 +301,9 @@ int main(int argc, char **argv)
 	click(LV_SYMBOL_PLUS);
 	assert(lv_obj_has_state(dropdown(), LV_STATE_DISABLED));
 	assert(find_label(root, "Add a contact in Contacts first."));
-	assert(lv_obj_has_state(lv_obj_get_parent(find_label(root, "Review & queue")), LV_STATE_DISABLED));
+	assert(lv_obj_has_state(send_button(), LV_STATE_DISABLED));
 	capture(argv[1], "no-contacts");
 	messages_controller_deinit(&controller);
-	puts("PASS: actual LVGL events: default inbox, header +, no search bar, read, compose, save, edit, queue, delete/cancel");
+	puts("PASS: actual LVGL events: default inbox, header +, read, detail without delete, compose, direct send");
 	return 0;
 }

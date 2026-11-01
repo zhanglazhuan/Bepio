@@ -6,7 +6,9 @@
 #include "nvs.h"
 #include <errno.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include "../../../modules/pager_id.h"
 #define DAY 86400
 BEPIO_MUTEX_DEFINE(account_lock);
 static struct {
@@ -64,13 +66,33 @@ int bepio_account_init(void)
 		ret = esp_efuse_mac_get_default(mac);
 		if (ret) { return ret; }
 		saved.version = 1;
-		snprintf(saved.id, sizeof(saved.id), "bepio-%02x%02x%02x%02x%02x%02x",
-			 mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+		uint64_t number = 0;
+		for (size_t i = 0; i < sizeof(mac); i++) number = (number << 8) | mac[i];
+		snprintf(saved.id, sizeof(saved.id), "%llu", (unsigned long long)number);
 		persist();
 		if (storage_error) { return storage_error; }
 	} else if (ret || size != sizeof(saved) || saved.version != 1 ||
 		   !memchr(saved.id, 0, sizeof(saved.id))) {
 		return ret ? ret : ESP_ERR_INVALID_STATE;
+	}
+	if (!bepio_pager_id_valid(saved.id, 24)) {
+		uint64_t number = 0;
+		char *end = NULL;
+		if (!strncmp(saved.id, "bepio-", 6)) {
+			number = strtoull(saved.id + 6, &end, 16);
+		}
+		if (!end || end != saved.id + 18 || *end || number > 0xffffffffffffULL) {
+			uint8_t mac[6];
+			ret = esp_efuse_mac_get_default(mac);
+			if (ret) return ret;
+			number = 0;
+			for (size_t i = 0; i < sizeof(mac); i++) number = (number << 8) | mac[i];
+		}
+		snprintf(saved.id, sizeof(saved.id), "%llu", (unsigned long long)number);
+		saved.confirmed = false;
+		saved.next_change = 0;
+		persist();
+		if (storage_error) return storage_error;
 	}
 	esp_timer_create_args_t args = {.callback = checkpoint, .name = "account_save"};
 	ret = esp_timer_create(&args, &timer);
@@ -98,10 +120,7 @@ int bepio_account_request(const char *id)
 {
 	if (!id) { return -EINVAL; }
 	size_t n = strnlen(id, BEPIO_ACCOUNT_ID_MAX + 1);
-	if (n < 4 || n > BEPIO_ACCOUNT_ID_MAX || !strncmp(id, "bepio-", 6)) { return -EINVAL; }
-	for (size_t i = 0; i < n; i++) {
-		if (!((id[i] >= 'a' && id[i] <= 'z') || (id[i] >= '0' && id[i] <= '9') || id[i] == '_')) { return -EINVAL; }
-	}
+	if (n < 1 || n > 24 || !bepio_pager_id_valid(id, 24)) return -EINVAL;
 	bepio_mutex_lock(account_lock);
 	int ret = !ready ? -EIO : pending[0] ? -EBUSY : !online ? -ENETDOWN :
 		!strcmp(id, saved.id) ? -EALREADY : 0;

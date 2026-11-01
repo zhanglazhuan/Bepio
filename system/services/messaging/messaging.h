@@ -67,7 +67,7 @@ int bepio_messaging_delete(bepio_message_box_t box, uint32_t id);
  */
 int bepio_messaging_receive(const char *remote_id, const bepio_message_payload_t *payload,
 			    int64_t timestamp_ms, bool simulated, uint32_t *id);
-/* Transport adapter contract: no backend is installed yet. Report connectivity,
+/* Transport adapter contract: EMQX is provided by bepio_mn316_manager.c. Report connectivity,
  * take a queued record, then complete only after server ACK/error/timeout.
  * Correlate both ID and attempt; retry preserves ID and immutable content.
  * Only one message may be SENDING. Simulation bypasses offline solely for tests

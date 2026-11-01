@@ -35,3 +35,8 @@ int bepio_chats_register(void)
 {
 	return bepio_app_manager_add_application(&application);
 }
+
+bepio_chats_controller_t *bepio_chats_app_get_controller(void)
+{
+	return &controller;
+}

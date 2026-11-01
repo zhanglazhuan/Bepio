@@ -11,19 +11,16 @@ messages_page_context_t *messages_page_alloc(size_t size, messages_view_t *view)
 	return ctx;
 }
 
-static void page_back(lv_event_t *event)
+void messages_page_back(lv_event_t *event)
 {
-	messages_page_context_t *ctx = lv_event_get_user_data(event);
-	messages_controller_back(ctx->controller);
+	messages_view_t *view = lv_event_get_user_data(event);
+	messages_controller_back(view->controller);
 }
 
-lv_obj_t *messages_page_begin(messages_page_context_t *ctx, const char *title)
+void messages_page_prepare(messages_page_context_t *ctx, Page page, const char *title)
 {
-	Page page = lv_page_create(title,
-		ctx->controller->model->flow.page != MESSAGES_PAGE_HOME,
-		page_back, ctx);
-	if (!page.screen) { return NULL; }
 	ctx->root = page.container;
+	ctx->view->root = page.container;
 	lv_obj_set_style_bg_color(ctx->root, lv_color_hex(0x101827), 0);
 	lv_obj_set_style_pad_all(ctx->root, 8, 0);
 	lv_obj_set_style_pad_row(ctx->root, 8, 0);
@@ -34,13 +31,13 @@ lv_obj_t *messages_page_begin(messages_page_context_t *ctx, const char *title)
 	lv_page_set_title(ctx->root, title,
 		ctx->controller->model->flow.page == MESSAGES_PAGE_HOME ||
 		ctx->controller->model->flow.page == MESSAGES_PAGE_BOX ? 40 : 0);
-	return page.screen;
 }
 
-lv_obj_t *messages_page_finish(messages_page_context_t *ctx)
+lv_obj_t *messages_page_finish(messages_view_t *view, Page page, messages_page_context_t *ctx)
 {
-	ctx->view->page_nav.nav_ctx = ctx;
-	return lv_obj_get_screen(ctx->root);
+	if (!ctx) { lv_obj_delete(page.screen); return NULL; }
+	view->page_nav.nav_ctx = ctx;
+	return page.screen;
 }
 
 lv_obj_t *messages_page_text(lv_obj_t *parent, const char *value, uint32_t color)
@@ -76,13 +73,12 @@ void messages_page_action(lv_event_t *event)
 	}
 	switch (code) {
 	case ACT_NEW: ret = messages_controller_new(controller, "", ""); break;
-	case ACT_BACK: messages_controller_back(controller); break;
 	case ACT_REPLY: ret = messages_controller_reply(controller, controller->model->flow.selected_id); break;
 	case ACT_DELETE: ret = messages_controller_delete(controller, controller->model->flow.box, controller->model->flow.selected_id); break;
 	case ACT_CONFIRM: ret = messages_controller_confirm(controller, &id); break;
 	case ACT_CANCEL: ret = messages_controller_cancel(controller); break;
 	case ACT_SAVE: ret = messages_controller_save(controller, &id); break;
-	case ACT_SEND: ret = messages_controller_send(controller); break;
+	case ACT_SEND: ret = messages_controller_send_now(controller, &id); break;
 	case ACT_DISCARD: ret = messages_controller_discard(controller); break;
 	case ACT_EDIT: ret = messages_controller_edit(controller, controller->model->flow.selected_id); break;
 	case ACT_RETRY: ret = messages_controller_retry(controller, controller->model->flow.selected_id); break;

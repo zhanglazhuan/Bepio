@@ -23,6 +23,11 @@ int bepio_messaging_get(bepio_message_box_t box, uint32_t id, bool mark_read,
 	return -ENOENT;
 }
 int bepio_messages_voice_play(const char *text) { (void)text; return -ENOTSUP; }
+int bepio_messaging_submit(uint32_t draft_id, const bepio_message_payload_t *payload, uint32_t *id)
+{
+	(void)draft_id; (void)payload; (void)id;
+	return -ENOTSUP;
+}
 
 int main(void)
 {

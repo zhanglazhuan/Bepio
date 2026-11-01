@@ -1,7 +1,80 @@
 #include "contacts_detail.h"
 #include <stdlib.h>
 #include "contacts_page_common.h"
+#include "lv_bottom_sheet.h"
 #include "system/uilv/imgs/icon_28x28/bepio_icons_28.h"
+
+static void delete_sheet_closed(lv_event_t *event)
+{
+	(void)event;
+	contacts_controller_cancel_delete(contacts_app_get_controller());
+}
+
+static void keep_contact(lv_event_t *event)
+{
+	contacts_controller_cancel_delete(contacts_app_get_controller());
+	lv_bottom_sheet_close(lv_event_get_user_data(event));
+}
+
+static void delete_contact(lv_event_t *event)
+{
+	lv_obj_t *label = lv_event_get_user_data(event);
+	int ret = contacts_controller_confirm_delete(contacts_app_get_controller());
+	if (ret) {
+		lv_label_set_text(label, ret == -EIO ? "Flash save failed. Try again." :
+			"Contact could not be deleted.");
+	}
+}
+
+static lv_obj_t *sheet_button(lv_obj_t *parent, const char *text, uint32_t color)
+{
+	lv_obj_t *button = lv_button_create(parent);
+	lv_obj_set_size(button, 0, 36);
+	lv_obj_set_flex_grow(button, 1);
+	lv_obj_set_style_bg_color(button, lv_color_hex(color), 0);
+	lv_obj_set_style_shadow_width(button, 0, 0);
+	lv_obj_t *label = lv_label_create(button);
+	lv_label_set_text(label, text);
+	lv_obj_center(label);
+	return button;
+}
+
+int bepio_contacts_detail_show_delete_sheet(bepio_contacts_page_context_t *ctx)
+{
+	contacts_controller_t *controller = contacts_app_get_controller();
+	int ret = contacts_controller_request_delete(controller);
+	if (ret) { return ret; }
+	lv_bottom_sheet_t *sheet = lv_bottom_sheet_create(lv_obj_get_screen(ctx->root));
+	if (!sheet) {
+		contacts_controller_cancel_delete(controller);
+		return -ENOMEM;
+	}
+	lv_obj_add_event_cb(sheet->overlay, delete_sheet_closed, LV_EVENT_DELETE, NULL);
+	lv_bottom_sheet_add_header(sheet, "Delete contact?");
+	lv_bottom_sheet_set_height(sheet, 170);
+	lv_obj_set_style_radius(sheet->sheet, 12, 0);
+	lv_obj_t *content = lv_bottom_sheet_get_content(sheet);
+	lv_obj_set_flex_flow(content, LV_FLEX_FLOW_COLUMN);
+	lv_obj_set_style_pad_all(content, 10, 0);
+	lv_obj_set_style_pad_row(content, 5, 0);
+	lv_obj_t *message = lv_label_create(content);
+	lv_label_set_text(message, "Remove this contact from your address book?");
+	lv_obj_set_width(message, lv_pct(100));
+	lv_label_set_long_mode(message, LV_LABEL_LONG_WRAP);
+	lv_obj_t *error = lv_label_create(content);
+	lv_label_set_text(error, "");
+	lv_obj_set_style_text_color(error, lv_color_hex(RED), 0);
+	lv_obj_t *actions = lv_obj_create(content);
+	lv_obj_remove_style_all(actions);
+	lv_obj_set_size(actions, lv_pct(100), 36);
+	lv_obj_set_flex_flow(actions, LV_FLEX_FLOW_ROW);
+	lv_obj_set_style_pad_column(actions, 8, 0);
+	lv_obj_t *keep = sheet_button(actions, "Keep contact", GREEN);
+	lv_obj_add_event_cb(keep, keep_contact, LV_EVENT_CLICKED, sheet);
+	lv_obj_t *remove = sheet_button(actions, "Delete contact", RED);
+	lv_obj_add_event_cb(remove, delete_contact, LV_EVENT_CLICKED, error);
+	return 0;
+}
 
 static void message_button(bepio_contacts_page_context_t *ctx, int y)
 {

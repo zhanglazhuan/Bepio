@@ -4,4 +4,5 @@
 /* Called on the LVGL owner thread. */
 lv_obj_t *bepio_contacts_edit_build(void *app, void *payload);
 int bepio_contacts_edit_page_sync(bepio_contacts_page_context_t *ctx);
+void bepio_contacts_edit_request_back(bepio_contacts_page_context_t *ctx);
 #endif

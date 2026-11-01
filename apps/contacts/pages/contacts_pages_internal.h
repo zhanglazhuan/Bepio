@@ -17,7 +17,7 @@
 #define PAGE_SIZE 12
 
 typedef enum { ACT_NEW, ACT_EDIT, ACT_SAVE, ACT_BACK, ACT_DELETE,
-	ACT_DELETE_YES, ACT_DISCARD, ACT_NEXT, ACT_PREVIOUS, ACT_MESSAGE, ACT_FAVORITE } action_t;
+	ACT_NEXT, ACT_PREVIOUS, ACT_MESSAGE, ACT_FAVORITE } action_t;
 struct bepio_contacts_page_context {
 	contacts_view_t *view;
 	contacts_model_t *model;

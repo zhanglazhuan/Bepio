@@ -1,4 +1,5 @@
 #include "pager_message.h"
+#include "../../modules/pager_id.h"
 
 #include <ctype.h>
 #include <math.h>
@@ -50,7 +51,9 @@ static bool message_valid(const struct bepio_pager_message *message)
 	    strnlen(message->text, sizeof(message->text)) == sizeof(message->text) ||
 	    strnlen(message->datetime, sizeof(message->datetime)) == sizeof(message->datetime) ||
 	    strnlen(message->address, sizeof(message->address)) == sizeof(message->address) ||
-	    !message->from[0] || !message->to[0] || !datetime_valid(message->datetime)) return false;
+	    !bepio_pager_id_valid(message->from, BEPIO_PAGER_NAME_MAX) ||
+	    !bepio_pager_id_valid(message->to, BEPIO_PAGER_NAME_MAX) ||
+	    !datetime_valid(message->datetime)) return false;
 	if (message->has_location &&
 	    (!isfinite(message->latitude) || !isfinite(message->longitude) ||
 	     message->latitude < -90 || message->latitude > 90 ||

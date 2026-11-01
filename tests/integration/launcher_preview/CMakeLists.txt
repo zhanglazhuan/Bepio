@@ -24,15 +24,15 @@ add_executable(contacts_preview contacts_main.c
     "${BEPIO_ROOT}/apps/contacts/pages/contacts_list.c"
     "${BEPIO_ROOT}/apps/contacts/pages/contacts_detail.c"
     "${BEPIO_ROOT}/apps/contacts/pages/contacts_edit.c"
-    "${BEPIO_ROOT}/apps/contacts/pages/contacts_delete_confirm.c"
-    "${BEPIO_ROOT}/apps/contacts/pages/contacts_discard_confirm.c"
+    "${BEPIO_ROOT}/system/uilv/widgets/lv_bottom_sheet.c"
     "${BEPIO_ROOT}/system/uilv/framework/page_navigator.c"
  "${BEPIO_ROOT}/system/appmgr/bepio_app_manager.c")
 target_include_directories(contacts_preview PRIVATE
     "${BEPIO_ROOT}/system/uilv/framework"
     "${CMAKE_CURRENT_LIST_DIR}/host"
     "${BEPIO_ROOT}/tests/unittest/app_manager/host" "${BEPIO_ROOT}"
-    "${BEPIO_ROOT}/apps/contacts" "${BEPIO_ROOT}/system/appmgr")
+    "${BEPIO_ROOT}/apps/contacts" "${BEPIO_ROOT}/system/appmgr"
+    "${BEPIO_ROOT}/system/uilv/theme")
 target_compile_definitions(contacts_preview PRIVATE CONFIG_BEPIO_MAX_APPS=8
     CONFIG_BEPIO_CONTACTS_CAPACITY=32)
 target_link_libraries(contacts_preview PRIVATE lvgl m)
@@ -64,6 +64,26 @@ target_include_directories(display_pipeline_preview PRIVATE
     "${BEPIO_ROOT}/system/uilv" "${BEPIO_ROOT}/drivers/st7789" "${BEPIO_ROOT}/boards/esp32s3")
 target_compile_options(display_pipeline_preview PRIVATE -Wall -Wextra -Werror -UNDEBUG)
 target_link_libraries(display_pipeline_preview PRIVATE lvgl m)
+
+add_executable(chats_preview chats_main.c
+    "${BEPIO_ROOT}/apps/chats/model.c"
+    "${BEPIO_ROOT}/apps/chats/controller.c"
+    "${BEPIO_ROOT}/apps/chats/view.c"
+    "${BEPIO_ROOT}/apps/chats/pages/chats_main.c"
+    "${BEPIO_ROOT}/system/uilv/framework/page_navigator.c"
+    "${BEPIO_ROOT}/system/uilv/widgets/lv_page.c"
+    "${BEPIO_ROOT}/system/uilv/widgets/lv_status_bar.c"
+    "${BEPIO_ROOT}/system/uilv/imgs/icon_24x24/ic_mic_24.c")
+target_include_directories(chats_preview PRIVATE
+    "${BEPIO_ROOT}/system/uilv/framework"
+    "${CMAKE_CURRENT_LIST_DIR}/host"
+    "${BEPIO_ROOT}"
+    "${BEPIO_ROOT}/system/uilv/widgets"
+    "${BEPIO_ROOT}/system/services/messaging")
+target_compile_definitions(chats_preview PRIVATE CONFIG_BEPIO_CONTACTS_CAPACITY=4
+    CONFIG_BEPIO_MESSAGES_INBOX_CAPACITY=4 CONFIG_BEPIO_MESSAGES_OUTBOX_CAPACITY=4)
+target_compile_options(chats_preview PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+target_link_libraries(chats_preview PRIVATE lvgl m)
 enable_testing()
 foreach(scenario success timeout submit-error oom wait-timeout)
     add_test(NAME display_pipeline_${scenario} COMMAND display_pipeline_preview ${scenario})
