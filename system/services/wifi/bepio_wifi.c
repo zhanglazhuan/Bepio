@@ -25,7 +25,8 @@ typedef struct {
 	char password[BEPIO_WIFI_PASSWORD_MAX + 1];
 } command_t;
 typedef struct { char ssid[33], password[65]; } credential_t;
-static struct { uint32_t version, count; credential_t entries[SAVED_MAX]; } saved;
+typedef struct { uint32_t version, count; credential_t entries[SAVED_MAX]; } saved_credentials_t;
+static saved_credentials_t saved;
 static SemaphoreHandle_t lock;
 static QueueHandle_t commands;
 static EventGroupHandle_t events;
@@ -33,6 +34,11 @@ static esp_netif_t *station;
 static bool driver_ready, started;
 static uint32_t generation;
 static bepio_wifi_snapshot_t state;
+static void clear_password(void *buffer, size_t size)
+{
+	volatile unsigned char *byte = buffer;
+	while (size--) { *byte++ = 0; }
+}
 static int saved_index(const char *ssid)
 {
 	for (unsigned i = 0; i < saved.count; i++) {
@@ -140,12 +146,15 @@ static void load_saved(void)
 }
 static void save_credential(const command_t *command, const char *password)
 {
+	saved_credentials_t previous = saved;
 	int old = saved_index(command->ap.ssid);
 	if (old < 0) { old = saved.count < SAVED_MAX ? (int)saved.count++ : SAVED_MAX - 1; }
 	for (int i = old; i > 0; i--) { saved.entries[i] = saved.entries[i - 1]; }
 	snprintf(saved.entries[0].ssid, sizeof(saved.entries[0].ssid), "%s", command->ap.ssid);
 	snprintf(saved.entries[0].password, sizeof(saved.entries[0].password), "%s", password);
 	int error = bepio_store_write("bepio_wifi", "networks", &saved, sizeof(saved));
+	if (error) { saved = previous; }
+	clear_password(&previous, sizeof(previous));
 	xSemaphoreTake(lock, portMAX_DELAY);
 	state.storage_error = error;
 	for (size_t i = 0; i < state.count; i++) { state.aps[i].saved = saved_index(state.aps[i].ssid) >= 0; }
@@ -163,7 +172,7 @@ static void connect_network(const command_t *command)
 	xEventGroupClearBits(events, CONNECTED_BIT | FAILED_BIT | CANCEL_BIT);
 	esp_wifi_disconnect();
 	xEventGroupWaitBits(events, FAILED_BIT | CANCEL_BIT, pdTRUE, pdFALSE, pdMS_TO_TICKS(500));
-	if (!current(command->generation)) { memset(password, 0, sizeof(password)); return; }
+	if (!current(command->generation)) { clear_password(password, sizeof(password)); return; }
 	xEventGroupClearBits(events, CONNECTED_BIT | FAILED_BIT | CANCEL_BIT);
 	wifi_config_t config = {0};
 	memcpy(config.sta.ssid, command->ap.ssid, strlen(command->ap.ssid));
@@ -183,7 +192,7 @@ static void connect_network(const command_t *command)
 	state.revision++;
 	xSemaphoreGive(lock);
 	esp_err_t ret = esp_wifi_set_config(WIFI_IF_STA, &config);
-	memset(&config, 0, sizeof(config));
+	clear_password(&config, sizeof(config));
 	if (!ret) { ret = esp_wifi_connect(); }
 	EventBits_t bits = ret ? 0 : xEventGroupWaitBits(events, CONNECTED_BIT | FAILED_BIT | CANCEL_BIT,
 		pdTRUE, pdFALSE, pdMS_TO_TICKS(15000));
@@ -198,7 +207,7 @@ static void connect_network(const command_t *command)
 				"Failed: password or signal");
 		}
 	}
-	memset(password, 0, sizeof(password));
+	clear_password(password, sizeof(password));
 }
 static bool supported(wifi_auth_mode_t auth)
 {
@@ -253,7 +262,7 @@ static void worker(void *unused)
 	command_t command;
 	for (;;) {
 		if (xQueueReceive(commands, &command, portMAX_DELAY) != pdTRUE) { continue; }
-		if (!current(command.generation)) { memset(&command, 0, sizeof(command)); continue; }
+		if (!current(command.generation)) { clear_password(&command, sizeof(command)); continue; }
 		if (command.operation == DISABLE) {
 			if (started) { esp_wifi_stop(); started = false; }
 			xSemaphoreTake(lock, portMAX_DELAY);
@@ -275,7 +284,7 @@ static void worker(void *unused)
 				result(command.generation, 0, "Disconnected");
 			}
 		}
-		memset(&command, 0, sizeof(command));
+		clear_password(&command, sizeof(command));
 	}
 }
 static int initialize(void)
@@ -346,7 +355,7 @@ int bepio_wifi_connect(const bepio_wifi_ap_t *ap, const char *password)
 	if (!commands) { return -ENETDOWN; }
 	command_t command = {.operation = CONNECT, .ap = *ap, .use_saved = password == NULL};
 	if (password) { snprintf(command.password, sizeof(command.password), "%s", password); }
-	int error = request(&command); memset(&command, 0, sizeof(command)); return error;
+	int error = request(&command); clear_password(&command, sizeof(command)); return error;
 }
 int bepio_wifi_disconnect(void)
 {

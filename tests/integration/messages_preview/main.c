@@ -5,7 +5,6 @@
 #include "controller.h"
 #include "demo.h"
 #include "lv_page.h"
-#include "bepio_navigation.h"
 #include "apps/contacts/app.h"
 #include "bepio_app_manager.h"
 
@@ -15,18 +14,23 @@ static uint16_t frame[PREVIEW_WIDTH * PREVIEW_HEIGHT], draw[PREVIEW_WIDTH * 16];
 static messages_controller_t controller;
 static messages_model_t model;
 static messages_view_t view;
-static lv_obj_t *root;
+static lv_obj_t *active_root(void)
+{
+	lv_timer_handler();
+	return lv_obj_get_child(lv_screen_active(), 2);
+}
+static Page active_page(void)
+{
+	lv_obj_t *screen = lv_screen_active();
+	lv_obj_t *header = lv_obj_get_child(screen, 1);
+	return (Page){.screen = screen, .header = header,
+		.header_right = lv_obj_get_child(header, 2), .container = active_root()};
+}
+#define root active_root()
 static void page_back(lv_event_t *event)
 {
 	(void)event;
 	messages_controller_back(&controller);
-}
-static void preview_exit(void)
-{
-	messages_controller_deinit(&controller);
-	bepio_navigation_set_exit_handler(NULL, NULL);
-	lv_obj_clean(root);
-	lv_label_set_text(lv_label_create(root), "App closed. Restart preview to reopen.");
 }
 #ifdef _WIN32
 #include "window.h"
@@ -69,6 +73,7 @@ static void click(const char *value)
 {
 	lv_obj_t *label = find_label(lv_screen_active(), value); assert(label);
 	lv_obj_send_event(lv_obj_get_parent(label), LV_EVENT_CLICKED, NULL);
+	lv_timer_handler();
 }
 static lv_obj_t *find_textarea(lv_obj_t *parent, unsigned *index)
 {
@@ -111,10 +116,9 @@ int main(int argc, char **argv)
 	lv_display_set_color_format(display, LV_COLOR_FORMAT_RGB565);
 	lv_display_set_buffers(display, draw, NULL, sizeof(draw), LV_DISPLAY_RENDER_MODE_PARTIAL);
 	lv_display_set_flush_cb(display, flush);
-	bepio_page_t page = bepio_page_create("Messages", true, page_back, NULL);
-	lv_screen_load(page.screen);
-	root = page.container;
-	bepio_navigation_set_exit_handler(preview_exit, "Messages");
+	bepio_status_bar_init();
+	Page initial = lv_page_create("Messages", true, page_back, NULL);
+	lv_screen_load(initial.screen);
 	assert(bepio_contacts_register() == 0);
 	assert(bepio_app_manager_show(NULL, NULL, NULL, "Contacts") == 0);
 	uint32_t contact_id;
@@ -124,7 +128,7 @@ int main(int argc, char **argv)
 	assert(bepio_app_manager_delete() == 0);
 	bepio_messaging_init();
 	bepio_messages_demo_seed();
-	messages_view_init(&view, root, NULL, false);
+	messages_view_init(&view, root, NULL);
 	messages_controller_init(&controller, &model, &view);
 	if (!strcmp(argv[1], "--interactive")) {
 #ifdef _WIN32
@@ -135,27 +139,27 @@ int main(int argc, char **argv)
 		return 1;
 #endif
 	}
-	assert(view.page == MESSAGES_PAGE_HOME && view.box == BEPIO_MESSAGE_INBOX);
+	assert(model.flow.page == MESSAGES_PAGE_HOME && model.flow.box == BEPIO_MESSAGE_INBOX);
 	assert(find_label(root, "* Bepio Lab"));
 	assert(!find_label(root, "STAY IN TOUCH") && !find_label(root, "Offline / stored in memory"));
 	assert(!find_label(root, LV_SYMBOL_PLUS));
-	assert(find_label(page.header_right, LV_SYMBOL_PLUS));
-	lv_obj_update_layout(page.screen);
+	assert(find_label(active_page().header_right, LV_SYMBOL_PLUS));
+	lv_obj_update_layout(active_page().screen);
 	lv_area_t add_bounds;
-	lv_obj_get_coords(lv_obj_get_parent(find_label(page.header_right, LV_SYMBOL_PLUS)), &add_bounds);
-	assert(add_bounds.x2 == PREVIEW_WIDTH - 1 && add_bounds.y2 < BEPIO_STATUS_BAR_HEIGHT + BEPIO_PAGE_HEADER_HEIGHT);
-	assert(lv_obj_get_style_bg_opa(lv_obj_get_parent(find_label(page.header_right, LV_SYMBOL_PLUS)), 0) == LV_OPA_TRANSP);
+	lv_obj_get_coords(lv_obj_get_parent(find_label(active_page().header_right, LV_SYMBOL_PLUS)), &add_bounds);
+	assert(add_bounds.x2 == PREVIEW_WIDTH - 1 && add_bounds.y2 < LV_STATUS_BAR_HEIGHT + LV_PAGE_HEADER_HEIGHT);
+	assert(lv_obj_get_style_bg_opa(lv_obj_get_parent(find_label(active_page().header_right, LV_SYMBOL_PLUS)), 0) == LV_OPA_TRANSP);
 	capture(argv[1], "home");
 	assert(!find_label(root, "Inbox") && !find_label(root, "Outbox"));
-	assert(view.page == MESSAGES_PAGE_HOME && view.box == BEPIO_MESSAGE_INBOX);
+	assert(model.flow.page == MESSAGES_PAGE_HOME && model.flow.box == BEPIO_MESSAGE_INBOX);
 	capture(argv[1], "inbox");
 	click("Alex");
-	assert(view.page == MESSAGES_PAGE_DETAIL);
+	assert(model.flow.page == MESSAGES_PAGE_DETAIL);
 	assert(find_label(root, LV_SYMBOL_PLAY "  Play voice"));
 	capture(argv[1], "chat");
 	assert(messages_controller_back(&controller));
 	click("* Bepio Lab");
-	assert(view.page == MESSAGES_PAGE_DETAIL);
+	assert(model.flow.page == MESSAGES_PAGE_DETAIL);
 	capture(argv[1], "detail");
 	click("Delete message");
 	capture(argv[1], "delete");
@@ -168,13 +172,13 @@ int main(int argc, char **argv)
 	assert(!find_textarea(root, &field_index));
 	assert(!find_label(root, "Go"));
 	click(LV_SYMBOL_PLUS);
-	assert(view.page == MESSAGES_PAGE_COMPOSE && !find_label(page.header_right, LV_SYMBOL_PLUS));
+	assert(model.flow.page == MESSAGES_PAGE_COMPOSE && !find_label(active_page().header_right, LV_SYMBOL_PLUS));
 	assert(!model.editor.phone[0] && !model.editor.name[0] && !model.editor.body[0]);
-	lv_obj_send_event(page.back, LV_EVENT_CLICKED, NULL);
-	assert(view.page == MESSAGES_PAGE_HOME && model.pending == MESSAGES_PENDING_NONE);
+	lv_obj_send_event(lv_obj_get_child(active_page().header, 0), LV_EVENT_CLICKED, NULL);
+	assert(model.flow.page == MESSAGES_PAGE_HOME && model.pending == MESSAGES_PENDING_NONE);
 	assert(!find_label(root, "UNSAVED MESSAGE"));
 	click(LV_SYMBOL_PLUS);
-	assert(view.page == MESSAGES_PAGE_COMPOSE);
+	assert(model.flow.page == MESSAGES_PAGE_COMPOSE);
 	assert(lv_dropdown_get_option_count(dropdown()) == 4);
 	assert(lv_dropdown_get_selected(dropdown()) == 0);
 	assert(lv_obj_has_state(lv_obj_get_parent(find_label(root, "Review & queue")), LV_STATE_DISABLED));
@@ -191,7 +195,7 @@ int main(int argc, char **argv)
 	capture(argv[1], "compose");
 	click("Save draft");
 	bepio_messaging_stats(&stats); assert(stats.outbox == 3);
-	assert(view.page == MESSAGES_PAGE_BOX);
+	assert(model.flow.page == MESSAGES_PAGE_BOX);
 	capture(argv[1], "outbox");
 	/* Return to the default inbox, then switch back to the saved draft. */
 	assert(messages_controller_home(&controller) == 0);
@@ -203,19 +207,19 @@ int main(int argc, char **argv)
 	click("Confirm queue");
 	bepio_messaging_stats(&stats); assert(stats.queued == 1 && stats.outbox == 3);
 	capture(argv[1], "queued");
-	lv_obj_send_event(page.back, LV_EVENT_CLICKED, NULL);
-	assert(view.page == MESSAGES_PAGE_BOX);
-	lv_obj_send_event(page.back, LV_EVENT_CLICKED, NULL);
-	assert(view.page == MESSAGES_PAGE_HOME && view.box == BEPIO_MESSAGE_INBOX);
+	lv_obj_send_event(lv_obj_get_child(active_page().header, 0), LV_EVENT_CLICKED, NULL);
+	assert(model.flow.page == MESSAGES_PAGE_BOX);
+	lv_obj_send_event(lv_obj_get_child(active_page().header, 0), LV_EVENT_CLICKED, NULL);
+	assert(model.flow.page == MESSAGES_PAGE_HOME && model.flow.box == BEPIO_MESSAGE_INBOX);
 	assert(!messages_controller_back(&controller));
-	assert(find_label(page.header_right, LV_SYMBOL_PLUS));
+	assert(find_label(active_page().header_right, LV_SYMBOL_PLUS));
 	bepio_message_t remaining;
 	while (!bepio_messaging_get_at(BEPIO_MESSAGE_INBOX, 0, &remaining)) {
 		assert(bepio_messaging_delete(BEPIO_MESSAGE_INBOX, remaining.id) == 0);
 	}
 	assert(messages_controller_home(&controller) == 0);
 	assert(find_label(root, "No messages yet"));
-	assert(find_label(page.header_right, LV_SYMBOL_PLUS));
+	assert(find_label(active_page().header_right, LV_SYMBOL_PLUS));
 	capture(argv[1], "empty");
 	/* Unknown recipients in replies/old drafts cannot bypass the selector. */
 	assert(messages_controller_new(&controller, "13500135000", "Unknown") == 0);

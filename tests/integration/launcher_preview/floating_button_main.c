@@ -56,7 +56,8 @@ int main(int argc, char **argv)
 	lv_display_set_color_format(display, LV_COLOR_FORMAT_RGB565);
 	lv_display_set_buffers(display, draw, NULL, sizeof(draw), LV_DISPLAY_RENDER_MODE_PARTIAL);
 	lv_display_set_flush_cb(display, flush);
-	bepio_page_t page = bepio_page_create("Floating Button", true, NULL, NULL);
+	bepio_status_bar_init();
+	Page page = lv_page_create("Floating Button", true, NULL, NULL);
 	lv_screen_load(page.screen);
 	lv_obj_t *root = page.container;
 	lv_obj_set_style_pad_all(root, 0, 0);

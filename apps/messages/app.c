@@ -5,7 +5,7 @@ static bepio_messages_app_t messages_app;
 
 static int messages_start(void *root, void *group)
 {
-	messages_view_init(&messages_app.view, root, group, messages_app.model.editing);
+	messages_view_init(&messages_app.view, root, group);
 	messages_controller_init(&messages_app.controller, &messages_app.model, &messages_app.view);
 	return 0;
 }

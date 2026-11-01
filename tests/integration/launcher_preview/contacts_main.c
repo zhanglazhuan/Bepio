@@ -9,7 +9,19 @@
 
 static uint16_t frame[240 * 320], draw[320 * 16];
 static lv_display_t *display;
-static lv_obj_t *root;
+static lv_obj_t *active_root(void)
+{
+	lv_timer_handler();
+	return lv_obj_get_child(lv_screen_active(), 2);
+}
+static Page active_page(void)
+{
+	lv_obj_t *screen = lv_screen_active();
+	lv_obj_t *header = lv_obj_get_child(screen, 1);
+	return (Page){.screen = screen, .header = header,
+		.header_right = lv_obj_get_child(header, 2), .container = active_root()};
+}
+#define root active_root()
 static void page_back(lv_event_t *event)
 {
 	(void)event;
@@ -93,6 +105,7 @@ static void click(const char *value)
 	lv_obj_t *button = lv_obj_get_parent(label);
 	while (button && !lv_obj_check_type(button, &lv_button_class)) { button = lv_obj_get_parent(button); }
 	assert(button); lv_obj_send_event(button, LV_EVENT_CLICKED, NULL);
+	lv_timer_handler();
 	lv_refr_now(display);
 }
 static void input(const char *field, const char *value)
@@ -115,15 +128,15 @@ int main(int argc, char **argv)
 	lv_display_set_color_format(display, LV_COLOR_FORMAT_RGB565);
 	lv_display_set_buffers(display, draw, NULL, sizeof(draw), LV_DISPLAY_RENDER_MODE_PARTIAL);
 	lv_display_set_flush_cb(display, flush);
-	bepio_page_t page = bepio_page_create("Contacts", true, page_back, NULL);
-	lv_screen_load(page.screen);
-	root = page.container;
+	bepio_status_bar_init();
+	Page initial = lv_page_create("Contacts", true, page_back, NULL);
+	lv_screen_load(initial.screen);
 	assert(bepio_contacts_register() == 0);
 	contacts_controller_t *c = contacts_app_get_controller();
 	assert(c->model->count == 0);
 	assert(bepio_app_manager_show(NULL, root, NULL, "Contacts") == 0);
 	assert(find_text(root, "No contact yet, click + goto add"));
-	assert(find_text(page.header_right, LV_SYMBOL_PLUS));
+	assert(find_text(active_page().header_right, LV_SYMBOL_PLUS));
 	for (unsigned i = 0; i < 8; i++) {
 		char name[24], phone[24];
 		uint32_t id;
@@ -133,16 +146,17 @@ int main(int argc, char **argv)
 	}
 	assert(bepio_app_manager_exit_app() == 0);
 	assert(bepio_app_manager_show(NULL, root, NULL, "Contacts") == 0);
-	bepio_page_set_message_handler(capture_message);
-	assert(c->model->count == 8); assert(find_text(page.header, "Contacts")); screenshot("contacts-list");
+	contacts_controller_set_compose_handler(c, capture_message);
+	assert(c->model->count == 8); assert(find_text(active_page().header, "Contacts")); screenshot("contacts-list");
 	assert(!find_field(root, "Search name / phone"));
 	assert(!find_text(root, "8 contacts  /  DEMO"));
-	lv_obj_t *plus = find_text(page.header_right, LV_SYMBOL_PLUS); assert(plus);
+	lv_obj_t *plus = find_text(active_page().header_right, LV_SYMBOL_PLUS); assert(plus);
 	lv_area_t plus_bounds, back_bounds;
-	lv_obj_get_coords(plus, &plus_bounds); lv_obj_get_coords(page.back, &back_bounds);
+	lv_obj_get_coords(plus, &plus_bounds);
+	lv_obj_get_coords(lv_obj_get_child(active_page().header, 0), &back_bounds);
 	assert(plus_bounds.y1 >= back_bounds.y1 && plus_bounds.y2 <= back_bounds.y2);
-	click("Ava Chen"); assert(c->view->page == CONTACTS_PAGE_DETAIL); assert(find_text(lv_screen_active(), "Contact Detail")); assert(!find_text(page.header_right, "Send Message"));
-	uint32_t favorite_id = c->view->selected_id;
+	click("Ava Chen"); assert(c->model->flow.page == CONTACTS_PAGE_DETAIL); assert(find_text(lv_screen_active(), "Contact Detail")); assert(!find_text(active_page().header_right, "Send Message"));
+	uint32_t favorite_id = c->model->flow.selected_id;
 	lv_obj_t *favorite = find_image(root, &ic_bookmark_star_28); assert(favorite);
 	lv_obj_send_event(lv_obj_get_parent(favorite), LV_EVENT_CLICKED, NULL);
 	contacts_entry_t favorite_entry;
@@ -177,33 +191,33 @@ int main(int argc, char **argv)
 	assert(lv_obj_get_x(send) + lv_obj_get_width(send) == lv_obj_get_width(root) - 12);
 	assert(lv_obj_get_y(send) == lv_obj_get_y(edit) && lv_obj_get_y(send) == lv_obj_get_y(del)); screenshot("contacts-detail");
 	lv_obj_send_event(send, LV_EVENT_CLICKED, NULL); assert(message_requests == 1);
-	click(LV_SYMBOL_EDIT); assert(c->view->page == CONTACTS_PAGE_EDIT);
+	click(LV_SYMBOL_EDIT); assert(c->model->flow.page == CONTACTS_PAGE_EDIT);
 	lv_refr_now(display);
 	lv_obj_t *kb = find_keyboard(root); assert(kb && !lv_obj_has_flag(kb, LV_OBJ_FLAG_HIDDEN));
 	lv_area_t bounds; lv_obj_get_coords(kb, &bounds);
-	assert(bounds.y1 >= BEPIO_STATUS_BAR_HEIGHT + BEPIO_PAGE_HEADER_HEIGHT &&
-	       bounds.y2 < 240 - BEPIO_PAGE_BOTTOM_HEIGHT);
-	assert(find_text(page.header, "Edit Contact")); screenshot("contacts-edit");
+	assert(bounds.y1 >= LV_STATUS_BAR_HEIGHT + LV_PAGE_HEADER_HEIGHT &&
+	       bounds.y2 < 240);
+	assert(find_text(active_page().header, "Edit Contact")); screenshot("contacts-edit");
 	lv_obj_t *phone = find_field(root, "Mobile number");
 	lv_obj_send_event(phone, LV_EVENT_FOCUSED, NULL);
 	lv_textarea_set_text(phone, ""); key(kb, "+"); key(kb, "1");
 	assert(!strcmp(lv_textarea_get_text(phone), "+1"));
 	screenshot("contacts-phone-keyboard");
 	input("Name", "Ava Updated"); input("Mobile number", "+12025550142");
-	click("Save"); assert(c->view->page == CONTACTS_PAGE_DETAIL && !strcmp(c->model->entries[0].name, "Ava Updated"));
+	click("Save"); assert(c->model->flow.page == CONTACTS_PAGE_DETAIL && !strcmp(c->model->entries[0].name, "Ava Updated"));
 	click(LV_SYMBOL_EDIT); input("Mobile number", c->model->entries[1].phone); click("Save");
-	assert(c->view->page == CONTACTS_PAGE_EDIT && find_text(root, "Number already exists"));
-	screenshot("contacts-error"); click("Cancel"); assert(c->view->page == CONTACTS_PAGE_DISCARD_CONFIRM);
-	assert(find_text(page.header, "Discard Changes")); screenshot("contacts-discard"); click("Keep editing"); assert(c->view->page == CONTACTS_PAGE_EDIT);
-	click("Cancel"); click("Discard changes"); assert(c->view->page == CONTACTS_PAGE_DETAIL);
-	lv_obj_send_event(page.back, LV_EVENT_CLICKED, NULL); click(LV_SYMBOL_PLUS); assert(find_text(page.header, "New Contact")); screenshot("contacts-new");
+	assert(c->model->flow.page == CONTACTS_PAGE_EDIT && find_text(root, "Number already exists"));
+	screenshot("contacts-error"); click("Cancel"); assert(c->model->flow.page == CONTACTS_PAGE_DISCARD_CONFIRM);
+	assert(find_text(active_page().header, "Discard Changes")); screenshot("contacts-discard"); click("Keep editing"); assert(c->model->flow.page == CONTACTS_PAGE_EDIT);
+	click("Cancel"); click("Discard changes"); assert(c->model->flow.page == CONTACTS_PAGE_DETAIL);
+	lv_obj_send_event(lv_obj_get_child(active_page().header, 0), LV_EVENT_CLICKED, NULL); click(LV_SYMBOL_PLUS); assert(find_text(active_page().header, "New Contact")); screenshot("contacts-new");
 	input("Name", "Test Person"); input("Mobile number", "+"); click("Save");
-	assert(c->view->page == CONTACTS_PAGE_EDIT && c->model->count == 8);
+	assert(c->model->flow.page == CONTACTS_PAGE_EDIT && c->model->count == 8);
 	input("Mobile number", "+12025550199"); click("Save");
-	assert(c->view->page == CONTACTS_PAGE_DETAIL && c->model->count == 9);
-	click(LV_SYMBOL_TRASH); assert(find_text(page.header, "Delete Contact")); screenshot("contacts-delete"); click("Keep contact"); assert(c->model->count == 9);
-	click(LV_SYMBOL_TRASH); click("Delete contact"); assert(c->model->count == 8 && c->view->page == CONTACTS_PAGE_LIST);
-	assert(!find_text(page.header_right, "Search name / phone"));
+	assert(c->model->flow.page == CONTACTS_PAGE_DETAIL && c->model->count == 9);
+	click(LV_SYMBOL_TRASH); assert(find_text(active_page().header, "Delete Contact")); screenshot("contacts-delete"); click("Keep contact"); assert(c->model->count == 9);
+	click(LV_SYMBOL_TRASH); click("Delete contact"); assert(c->model->count == 8 && c->model->flow.page == CONTACTS_PAGE_LIST);
+	assert(!find_text(active_page().header_right, "Search name / phone"));
 	assert(bepio_app_manager_delete() == 0);
 	assert(bepio_app_manager_show(NULL, root, NULL, "Contacts") == 0);
 	assert(c->model->count == 8 && !strcmp(c->model->entries[0].name, "Ava Updated"));
@@ -212,6 +226,7 @@ int main(int argc, char **argv)
 		snprintf(name, sizeof(name), "Zed %02u", i);
 		snprintf(phone, sizeof(phone), "+120255502%02u", i);
 		assert(contacts_controller_add(c, name, phone, &id) == 0);
+		lv_timer_handler();
 	}
 	size_t count; assert(contacts_controller_list(c, &count) == 0 && count == 21);
 	click("More"); assert(find_text(root, "Zed 05") && !find_text(root, "Ava Updated"));

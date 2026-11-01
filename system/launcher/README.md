@@ -13,7 +13,7 @@ Settings 显示设置值；Messages 已支持收件/发件列表、搜索、详�
 截图见 [主机渲染预览](../../docs/assets/launcher.png)，不是实板照片。
 
 
-公共页面统一使用 `bepio_page_create()`（参考 DeepStoa），状态栏跨 app 常驻。
+公共页面统一使用 `lv_page_create()`（继承 DeepStoa 页面骨架），状态栏跨 app 常驻。
 左上角返回走 `bepio_app_manager_exit_app()`，由 app 消费层级返回；
 底部上划确认后走 `bepio_app_manager_delete()`，结束生命周期后重建首页。
 取消退出不修改 app 或其编辑器。触摸手势与弹窗由 uilv widgets 提供，Launcher 只负责生命周期路由。

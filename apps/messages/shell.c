@@ -193,24 +193,24 @@ static int render(const bepio_console_context_t *shell)
 	if (ret < 0) {
 		return error(shell, ret);
 	}
-	if (snapshot.view.page == MESSAGES_PAGE_BOX) {
-		return print_box(shell, snapshot.view.box);
+	if (snapshot.model.flow.page == MESSAGES_PAGE_BOX) {
+		return print_box(shell, snapshot.model.flow.box);
 	}
-	if (snapshot.view.page == MESSAGES_PAGE_DETAIL) {
-		ret = bepio_messaging_get(snapshot.view.box, snapshot.view.selected_id, false,
+	if (snapshot.model.flow.page == MESSAGES_PAGE_DETAIL) {
+		ret = bepio_messaging_get(snapshot.model.flow.box, snapshot.model.flow.selected_id, false,
 					  &message);
 		if (ret < 0) {
 			return error(shell, ret);
 		}
 		print_message(shell, &message);
-	} else if (snapshot.view.page == MESSAGES_PAGE_COMPOSE) {
+	} else if (snapshot.model.flow.page == MESSAGES_PAGE_COMPOSE) {
 		print_payload(shell, &snapshot.model.editor);
 		bepio_console_print(shell,
 			    "Editor: %s; %u bytes remaining. text/recipient/to/save/send/back",
 			    snapshot.model.dirty ? "unsaved changes" : "saved draft",
 			    (unsigned int)(BEPIO_MESSAGE_BODY_MAX -
 					   strlen(snapshot.model.editor.body)));
-	} else if (snapshot.view.page == MESSAGES_PAGE_CONFIRM) {
+	} else if (snapshot.model.flow.page == MESSAGES_PAGE_CONFIRM) {
 		switch (snapshot.model.pending) {
 		case MESSAGES_PENDING_SEND:
 			print_payload(shell, &snapshot.model.editor);

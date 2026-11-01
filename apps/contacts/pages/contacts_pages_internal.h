@@ -18,14 +18,18 @@
 
 typedef enum { ACT_NEW, ACT_EDIT, ACT_SAVE, ACT_BACK, ACT_DELETE,
 	ACT_DELETE_YES, ACT_DISCARD, ACT_NEXT, ACT_PREVIOUS, ACT_MESSAGE, ACT_FAVORITE } action_t;
-typedef struct {
+struct bepio_contacts_page_context {
 	contacts_view_t *view;
-	const contacts_model_t *model;
-	lv_obj_t *root, *list, *keyboard, *name, *phone, *error;
+	contacts_model_t *model;
+	lv_obj_t *root, *error;
 	bool rebuilding;
-	size_t offset;
-} bepio_contacts_page_context_t;
-extern bepio_contacts_page_context_t bepio_contacts_ui;
+};
+
+bepio_contacts_page_context_t *bepio_contacts_page_alloc(size_t size,
+	contacts_view_t *view, contacts_model_t *model);
+lv_obj_t *bepio_contacts_page_begin(bepio_contacts_page_context_t *ctx,
+	const char *title);
+lv_obj_t *bepio_contacts_page_finish(bepio_contacts_page_context_t *ctx);
 
 
 #endif

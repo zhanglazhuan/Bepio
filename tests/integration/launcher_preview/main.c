@@ -5,12 +5,26 @@
 #include "bepio_launcher.h"
 #include "bepio_app_manager.h"
 #include "lv_page.h"
-#include "bepio_navigation.h"
+#include "launcher_gesture.h"
+#include "lv_toast.h"
+#include "apps/contacts/controller.h"
 #include "system/uilv/imgs/icon_40x40/bepio_icons.h"
 
 int bepio_messages_compose(const char *phone, const char *name)
 {
 	assert(phone && name); return 0;
+}
+
+contacts_controller_t *contacts_app_get_controller(void)
+{
+	static contacts_controller_t controller;
+	return &controller;
+}
+
+void contacts_controller_set_compose_handler(contacts_controller_t *controller,
+	int (*handler)(const char *phone, const char *name))
+{
+	controller->compose_message = handler;
 }
 
 static uint16_t frame[240 * 320], draw[320 * 16];
@@ -35,6 +49,8 @@ int bepio_app_manager_exit_app(void)
 	current = NULL; if (closed) { closed(); } return 0;
 }
 int bepio_app_manager_delete(void) { force_stops++; current = NULL; return 0; }
+bool bepio_app_manager_is_app_running(void) { return current != NULL; }
+const char *bepio_app_manager_get_current_app_name(void) { return current; }
 static void flush(lv_display_t *display, const lv_area_t *a, uint8_t *pixels)
 {
 	uint16_t *src = (uint16_t *)pixels;
@@ -105,11 +121,12 @@ int main(int argc, char **argv)
 	lv_display_set_color_format(display, LV_COLOR_FORMAT_RGB565);
 	lv_display_set_buffers(display, draw, NULL, sizeof(draw), LV_DISPLAY_RENDER_MODE_PARTIAL);
 	lv_display_set_flush_cb(display, flush);
+	bepio_status_bar_init();
 	lv_indev_t *input=lv_indev_create();
 	lv_indev_set_type(input,LV_INDEV_TYPE_POINTER);
 	lv_indev_set_read_cb(input,pointer_read);
-	bepio_navigation_attach_input(input);
-	bepio_navigation_attach_input(input); /* No duplicate hooks. */
+	launcher_gesture_attach_input(input);
+	launcher_gesture_attach_input(input); /* No duplicate hooks. */
 	bepio_launcher_home();
 	capture(argv[1]);
 	lv_obj_t *contacts_icon = find_icon(lv_screen_active(), &ic_contacts);
@@ -127,7 +144,7 @@ int main(int argc, char **argv)
 	lv_obj_t *back=find(lv_screen_active(),LV_SYMBOL_LEFT); assert(back);
 	lv_obj_update_layout(lv_screen_active());
 	lv_area_t bounds; lv_obj_get_coords(lv_obj_get_parent(back),&bounds);
-	assert(bounds.x1==0 && bounds.y1>=BEPIO_STATUS_BAR_HEIGHT && bounds.y2<BEPIO_STATUS_BAR_HEIGHT+BEPIO_PAGE_HEADER_HEIGHT);
+	assert(bounds.x1==0 && bounds.y1>=LV_STATUS_BAR_HEIGHT && bounds.y2<LV_STATUS_BAR_HEIGHT+LV_PAGE_HEADER_HEIGHT);
 	consume_back=true;
 	click(lv_screen_active(),LV_SYMBOL_LEFT); assert(current); /* App consumes nested back. */
 	swipe(input,120,120,120,60); assert(!find(lv_layer_top(),"Exit app?"));
@@ -149,6 +166,14 @@ int main(int argc, char **argv)
 	assert(find(lv_layer_top(),"12:34") && find(lv_layer_top(),"Offline"));
 	bepio_status_bar_update(NULL,NULL,-1,false);
 	assert(find(lv_layer_top(),"--:--"));
+	lv_toast_show("Saved", 10);
+	assert(find(lv_layer_top(),"Saved"));
+	lv_tick_inc(20); lv_timer_handler();
+	assert(!find(lv_layer_top(),"Saved"));
+	lv_toast_show("Dismiss", 1000);
+	lv_obj_t *toast = find(lv_layer_top(),"Dismiss"); assert(toast);
+	lv_obj_delete(toast);
+	lv_tick_inc(1001); lv_timer_handler();
 	lv_refr_now(display);
 	puts("PASS: shared page/header, persistent status, nested back, real pointer bottom swipe thresholds, cancel/confirm exit, Home routing");
 	return 0;

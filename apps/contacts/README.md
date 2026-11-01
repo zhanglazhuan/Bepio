@@ -37,7 +37,7 @@
 - `app.c`：注册并恢复已保存的联系人。
 - `model.c`：CRUD、固定ID、重复号码/容量/输入验证、搜索匹配；model_init仍为空。
 - `controller.c`：详情、草稿、保存、删除确认、取消/放弃及返回状态。
-- `view.c`: LVGL rendering state, page dispatch and cleanup.
+- `view.c`：注册独立页面并在退出时释放当前页面上下文；controller 通过 `page_navigator` 导航，草稿和搜索状态保存在 model 的临时 `flow` 中。
 
 姓名非空、最长48字节，不接受控制字符或全空格；号码最长24字节，仅数字和可选前导+。
 号码必须唯一；不做国家码格式归一化。删除不改变其他ID，同次启动不复用已删除ID。
@@ -67,7 +67,7 @@ python tests/unittest/contacts/run.py
 
 ## Page source layout
 
-`view.c` owns LVGL render state, page dispatch and cleanup. There is no headless renderer. Each page is compiled separately:
+`view.c` registers page builders with `page_navigator`; each builder creates its own `lv_page` screen and context. The controller selects pages from model state. Each page is compiled separately:
 
 - `pages/contacts_list.c`: list, sorting, pagination and Add action.
 - `pages/contacts_detail.c`: Contact Detail, Send Message, Edit/Delete icons.
@@ -79,4 +79,4 @@ python tests/unittest/contacts/run.py
 
 Data changes continue through the controller. Both firmware and LVGL preview builds list these sources explicitly.
 
-Each page has a matching `contacts_*.h` declaring its rendering interface. Shared state stays private in `contacts_pages_internal.h`; shared controls are declared in `contacts_page_common.h`. Controller unit tests use a view test double; `contacts_preview` tests the actual LVGL pages.
+Each page has a matching `contacts_*.h` declaring its builder. `contacts_pages_internal.h` declares the page context shape; list and edit controls live in their own page contexts. Shared controls are declared in `contacts_page_common.h`. Controller unit tests use a view test double; `contacts_preview` tests the actual LVGL pages.

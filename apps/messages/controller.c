@@ -1,4 +1,5 @@
 #include "controller.h"
+#include "bepio_log.h"
 #include <errno.h>
 #include <string.h>
 #include "bepio_mutex.h"
@@ -7,6 +8,22 @@
 #endif
 
 BEPIO_MUTEX_DEFINE(messages_lock);
+BEPIO_LOG_TAG(messages_view);
+
+static void show_page(messages_controller_t *c)
+{
+	messages_view_t *view = c->view;
+	if (!view->available) { return; }
+	if (view->page_nav.registry) {
+		page_navigator_navigate_to(&view->page_nav, view,
+			c->model->flow.page + 1, NULL);
+	}
+	bepio_messaging_stats_t stats;
+	bepio_messaging_stats(&stats);
+	BEPIO_LOGI("Messages: page=%d inbox=%u unread=%u outbox=%u queued=%u",
+		c->model->flow.page, (unsigned)stats.inbox, (unsigned)stats.unread,
+		(unsigned)stats.outbox, (unsigned)stats.queued);
+}
 
 static messages_page_t box_page(bepio_message_box_t box)
 {
@@ -31,8 +48,10 @@ void messages_controller_init(messages_controller_t *c, messages_model_t *model,
 	c->model = model;
 	c->view = view;
 	c->active = true;
+	model->flow = (messages_flow_t){.page = model->editing ? MESSAGES_PAGE_COMPOSE : MESSAGES_PAGE_HOME,
+		.box = BEPIO_MESSAGE_INBOX};
 	view->controller = c;
-	messages_view_render(view);
+	show_page(c);
 	bepio_mutex_unlock(messages_lock);
 }
 
@@ -47,7 +66,7 @@ void messages_controller_deinit(messages_controller_t *c)
 
 static void cancel_pending(messages_controller_t *c)
 {
-	c->view->page = c->view->return_page;
+	c->model->flow.page = c->model->flow.return_page;
 	c->model->pending = MESSAGES_PENDING_NONE;
 }
 
@@ -60,27 +79,27 @@ bool messages_controller_back(messages_controller_t *c)
 		consumed = false;
 	} else if (c->model->pending != MESSAGES_PENDING_NONE) {
 		cancel_pending(c);
-	} else if (c->view->page == MESSAGES_PAGE_COMPOSE) {
+	} else if (c->model->flow.page == MESSAGES_PAGE_COMPOSE) {
 		if (c->model->dirty && (c->model->draft_id || c->model->editor.phone[0] ||
 		    c->model->editor.name[0] || c->model->editor.body[0])) {
 			c->model->pending = MESSAGES_PENDING_LEAVE;
-			c->view->return_page = MESSAGES_PAGE_COMPOSE;
-			c->view->page = MESSAGES_PAGE_CONFIRM;
+			c->model->flow.return_page = MESSAGES_PAGE_COMPOSE;
+			c->model->flow.page = MESSAGES_PAGE_CONFIRM;
 		} else {
 			messages_model_discard(c->model);
-			c->view->page = MESSAGES_PAGE_HOME;
-			c->view->box = BEPIO_MESSAGE_INBOX;
+			c->model->flow.page = MESSAGES_PAGE_HOME;
+			c->model->flow.box = BEPIO_MESSAGE_INBOX;
 		}
-	} else if (c->view->page == MESSAGES_PAGE_DETAIL) {
-		c->view->page = box_page(c->view->box);
-	} else if (c->view->page == MESSAGES_PAGE_BOX) {
-		c->view->page = MESSAGES_PAGE_HOME;
-		c->view->box = BEPIO_MESSAGE_INBOX;
+	} else if (c->model->flow.page == MESSAGES_PAGE_DETAIL) {
+		c->model->flow.page = box_page(c->model->flow.box);
+	} else if (c->model->flow.page == MESSAGES_PAGE_BOX) {
+		c->model->flow.page = MESSAGES_PAGE_HOME;
+		c->model->flow.box = BEPIO_MESSAGE_INBOX;
 	} else {
 		consumed = false;
 	}
 	if (consumed) {
-		messages_view_render(c->view);
+		show_page(c);
 	}
 	bepio_mutex_unlock(messages_lock);
 	return consumed;
@@ -91,7 +110,7 @@ void messages_controller_set_ui_available(messages_controller_t *c, bool availab
 	bepio_mutex_lock(messages_lock);
 	if (c->active) {
 		c->view->available = available;
-		messages_view_render(c->view);
+		show_page(c);
 	}
 	bepio_mutex_unlock(messages_lock);
 }
@@ -121,9 +140,9 @@ int messages_controller_home(messages_controller_t *c)
 	bepio_mutex_lock(messages_lock);
 	ret = ready(c, true);
 	if (!ret) {
-		c->view->page = MESSAGES_PAGE_HOME;
-		c->view->box = BEPIO_MESSAGE_INBOX;
-		messages_view_render(c->view);
+		c->model->flow.page = MESSAGES_PAGE_HOME;
+		c->model->flow.box = BEPIO_MESSAGE_INBOX;
+		show_page(c);
 	}
 	bepio_mutex_unlock(messages_lock);
 	return ret;
@@ -139,9 +158,9 @@ int messages_controller_box(messages_controller_t *c, bepio_message_box_t box)
 	bepio_mutex_lock(messages_lock);
 	ret = ready(c, true);
 	if (!ret) {
-		c->view->box = box;
-		c->view->page = box_page(box);
-		messages_view_render(c->view);
+		c->model->flow.box = box;
+		c->model->flow.page = box_page(box);
+		show_page(c);
 	}
 	bepio_mutex_unlock(messages_lock);
 	return ret;
@@ -158,10 +177,10 @@ int messages_controller_show(messages_controller_t *c, bepio_message_box_t box, 
 		ret = bepio_messaging_get(box, id, true, message);
 	}
 	if (!ret) {
-		c->view->page = MESSAGES_PAGE_DETAIL;
-		c->view->box = box;
-		c->view->selected_id = id;
-		messages_view_render(c->view);
+		c->model->flow.page = MESSAGES_PAGE_DETAIL;
+		c->model->flow.box = box;
+		c->model->flow.selected_id = id;
+		show_page(c);
 	}
 	bepio_mutex_unlock(messages_lock);
 	return ret;
@@ -176,8 +195,8 @@ static int begin_compose(messages_controller_t *c, const bepio_message_payload_t
 		ret = messages_model_compose(c->model, payload, draft_id, dirty);
 	}
 	if (!ret) {
-		c->view->page = MESSAGES_PAGE_COMPOSE;
-		messages_view_render(c->view);
+		c->model->flow.page = MESSAGES_PAGE_COMPOSE;
+		show_page(c);
 	}
 	return ret;
 }
@@ -242,7 +261,7 @@ int messages_controller_recipient(messages_controller_t *c, const char *phone, c
 			c->model->dirty |= strcmp(payload.name, c->model->editor.name) != 0 ||
 					   strcmp(payload.phone, c->model->editor.phone) != 0;
 			c->model->editor = payload;
-			messages_view_render(c->view);
+			show_page(c);
 		}
 	}
 	bepio_mutex_unlock(messages_lock);
@@ -324,7 +343,7 @@ int messages_controller_text(messages_controller_t *c, const char *text)
 		ret = messages_model_text(c->model, text);
 	}
 	if (!ret) {
-		messages_view_render(c->view);
+		show_page(c);
 	}
 	bepio_mutex_unlock(messages_lock);
 	return ret;
@@ -345,9 +364,9 @@ int messages_controller_save(messages_controller_t *c, uint32_t *id)
 	}
 	if (!ret) {
 		messages_model_discard(c->model);
-		c->view->page = MESSAGES_PAGE_BOX;
-		c->view->box = BEPIO_MESSAGE_OUTBOX;
-		messages_view_render(c->view);
+		c->model->flow.page = MESSAGES_PAGE_BOX;
+		c->model->flow.box = BEPIO_MESSAGE_OUTBOX;
+		show_page(c);
 	}
 	bepio_mutex_unlock(messages_lock);
 	return ret;
@@ -365,9 +384,9 @@ int messages_controller_discard(messages_controller_t *c)
 		ret = -EPERM;
 	} else {
 		messages_model_discard(c->model);
-		c->view->page = MESSAGES_PAGE_HOME;
-		c->view->box = BEPIO_MESSAGE_INBOX;
-		messages_view_render(c->view);
+		c->model->flow.page = MESSAGES_PAGE_HOME;
+		c->model->flow.box = BEPIO_MESSAGE_INBOX;
+		show_page(c);
 	}
 	bepio_mutex_unlock(messages_lock);
 	return ret;
@@ -376,9 +395,9 @@ int messages_controller_discard(messages_controller_t *c)
 static void confirm_page(messages_controller_t *c, messages_pending_t pending)
 {
 	c->model->pending = pending;
-	c->view->return_page = c->view->page;
-	c->view->page = MESSAGES_PAGE_CONFIRM;
-	messages_view_render(c->view);
+	c->model->flow.return_page = c->model->flow.page;
+	c->model->flow.page = MESSAGES_PAGE_CONFIRM;
+	show_page(c);
 }
 
 int messages_controller_send(messages_controller_t *c)
@@ -436,21 +455,21 @@ int messages_controller_confirm(messages_controller_t *c, uint32_t *id)
 		ret = bepio_messaging_submit(c->model->draft_id, &c->model->editor, id);
 		if (!ret) {
 			messages_model_discard(c->model);
-			c->view->page = MESSAGES_PAGE_DETAIL;
-			c->view->box = BEPIO_MESSAGE_OUTBOX;
-			c->view->selected_id = *id;
+			c->model->flow.page = MESSAGES_PAGE_DETAIL;
+			c->model->flow.box = BEPIO_MESSAGE_OUTBOX;
+			c->model->flow.selected_id = *id;
 		}
 	} else if (c->model->pending == MESSAGES_PENDING_DELETE) {
 		ret = bepio_messaging_delete(c->model->pending_box, c->model->pending_id);
 		if (!ret || ret == -ENOENT) {
 			*id = c->model->pending_id;
-			c->view->box = c->model->pending_box;
-			c->view->page = box_page(c->view->box);
+			c->model->flow.box = c->model->pending_box;
+			c->model->flow.page = box_page(c->model->flow.box);
 			c->model->pending = MESSAGES_PENDING_NONE;
 		}
 	}
 	if (!ret) {
-		messages_view_render(c->view);
+		show_page(c);
 	}
 	bepio_mutex_unlock(messages_lock);
 	return ret;
@@ -467,7 +486,7 @@ int messages_controller_cancel(messages_controller_t *c)
 		ret = -EPERM;
 	} else {
 		cancel_pending(c);
-		messages_view_render(c->view);
+		show_page(c);
 	}
 	bepio_mutex_unlock(messages_lock);
 	return ret;
@@ -483,10 +502,10 @@ int messages_controller_retry(messages_controller_t *c, uint32_t id)
 		ret = bepio_messaging_retry(id);
 	}
 	if (!ret) {
-		c->view->box = BEPIO_MESSAGE_OUTBOX;
-		c->view->selected_id = id;
-		c->view->page = MESSAGES_PAGE_DETAIL;
-		messages_view_render(c->view);
+		c->model->flow.box = BEPIO_MESSAGE_OUTBOX;
+		c->model->flow.selected_id = id;
+		c->model->flow.page = MESSAGES_PAGE_DETAIL;
+		show_page(c);
 	}
 	bepio_mutex_unlock(messages_lock);
 	return ret;

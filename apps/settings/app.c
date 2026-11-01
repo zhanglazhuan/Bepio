@@ -1,14 +1,21 @@
 #include "app.h"
 #include "bepio_app_manager.h"
+#include <errno.h>
 
 static bepio_settings_app_t settings_app;
+
+void bepio_settings_page_back(lv_event_t *event)
+{
+	(void)event;
+	bepio_app_manager_exit_app();
+}
 
 static int settings_start(void *root, void *group)
 {
 	settings_view_init(&settings_app.view, root, group);
 	settings_controller_init(&settings_app.controller, &settings_app.model,
 				 &settings_app.view);
-	return 0;
+	return settings_app.view.page_nav.current_page == SETTINGS_PAGE_HOME ? 0 : -ENOMEM;
 }
 
 static void settings_stop(void)

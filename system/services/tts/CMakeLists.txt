@@ -1,7 +1,8 @@
 idf_component_register(SRCS "bepio_tts.c" "tts_text.c" INCLUDE_DIRS "."
                        PRIV_REQUIRES esp-sr esp_partition mbedtls esp_timer)
 
-# Voice data is separate from the app; regular `idf.py flash` writes both.
+# Keep voice flashing opt-in while model debugging is paused.
+option(BEPIO_FLASH_TTS_MODEL "Include TTS voice data in the flash target" OFF)
 idf_build_get_property(components BUILD_COMPONENTS)
 if(esp-sr IN_LIST components)
     set(sr_component esp-sr)
@@ -28,6 +29,8 @@ endif()
 if(VOICE_BYTES GREATER voice_size)
     message(FATAL_ERROR "voice_data partition too small for Xiaoxin voice")
 endif()
-add_custom_target(bepio_tts_voice ALL DEPENDS "${voice_image}")
-add_dependencies(flash bepio_tts_voice)
-esptool_py_flash_to_partition(flash "voice_data" "${voice_image}")
+if(BEPIO_FLASH_TTS_MODEL)
+    add_custom_target(bepio_tts_voice ALL DEPENDS "${voice_image}")
+    add_dependencies(flash bepio_tts_voice)
+    esptool_py_flash_to_partition(flash "voice_data" "${voice_image}")
+endif()

@@ -76,7 +76,6 @@ static void bepio_preview_window(uint16_t *pixels, lv_obj_t *root_obj)
 	lv_indev_t *pointer = lv_indev_create();
 	lv_indev_set_type(pointer, LV_INDEV_TYPE_POINTER);
 	lv_indev_set_read_cb(pointer, pointer_read);
-	bepio_navigation_attach_input(pointer);
 	ShowWindow(window, SW_SHOW);
 	SetTimer(window, 1, 16, NULL);
 	MSG message;

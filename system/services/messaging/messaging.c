@@ -330,7 +330,7 @@ static int store(uint32_t draft_id, const bepio_message_payload_t *payload, uint
 			ret = -ENOSPC;
 			goto out;
 		}
-		if (!next_id) {
+		if (!next_id || next_id == UINT32_MAX) {
 			ret = -EOVERFLOW;
 			goto out;
 		}
@@ -448,7 +448,7 @@ int bepio_messaging_receive(const char *remote_id, const bepio_message_payload_t
 		ret = -ENOSPC;
 		goto out;
 	}
-	if (!next_id) {
+	if (!next_id || next_id == UINT32_MAX) {
 		ret = -EOVERFLOW;
 		goto out;
 	}
@@ -604,6 +604,9 @@ int bepio_messaging_init(void)
 	}
 	for (size_t i = 0; i < copy->inbox_count; i++) {
 		if (!copy->inbox[i].id || copy->inbox[i].id >= copy->next_id ||
+		    copy->inbox[i].state != BEPIO_MESSAGE_RECEIVED ||
+		    !memchr(copy->inbox[i].remote_id, 0, sizeof(copy->inbox[i].remote_id)) ||
+		    !copy->inbox[i].remote_id[0] ||
 		    !memchr(copy->inbox[i].payload.name, 0, sizeof(copy->inbox[i].payload.name)) ||
 		    !memchr(copy->inbox[i].payload.phone, 0, sizeof(copy->inbox[i].payload.phone)) ||
 		    !memchr(copy->inbox[i].payload.body, 0, sizeof(copy->inbox[i].payload.body)) ||
@@ -611,11 +614,20 @@ int bepio_messaging_init(void)
 	}
 	for (size_t i = 0; i < copy->outbox_count; i++) {
 		if (!copy->outbox[i].id || copy->outbox[i].id >= copy->next_id ||
+		    copy->outbox[i].state < BEPIO_MESSAGE_DRAFT ||
+		    copy->outbox[i].state > BEPIO_MESSAGE_FAILED ||
 		    !memchr(copy->outbox[i].payload.name, 0, sizeof(copy->outbox[i].payload.name)) ||
 		    !memchr(copy->outbox[i].payload.phone, 0, sizeof(copy->outbox[i].payload.phone)) ||
 		    !memchr(copy->outbox[i].payload.body, 0, sizeof(copy->outbox[i].payload.body)) ||
 		    bepio_messaging_validate(&copy->outbox[i].payload, false)) { free(copy); return -EIO; }
 		if (copy->outbox[i].state == BEPIO_MESSAGE_SENDING) { copy->outbox[i].state = BEPIO_MESSAGE_QUEUED; }
+	}
+	for (size_t i = 0; i < copy->seen_count; i++) {
+		if (!memchr(copy->seen[i].remote_id, 0, sizeof(copy->seen[i].remote_id)) ||
+		    !memchr(copy->seen[i].phone, 0, sizeof(copy->seen[i].phone)) ||
+		    !copy->seen[i].remote_id[0] || !copy->seen[i].phone[0]) {
+			free(copy); return -EIO;
+		}
 	}
 	inbox_count = copy->inbox_count;
 	outbox_count = copy->outbox_count;

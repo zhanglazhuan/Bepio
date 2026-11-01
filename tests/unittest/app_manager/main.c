@@ -149,8 +149,17 @@ static void test_settings(void)
 	assert(snapshot.page == SETTINGS_PAGE_DATETIME && snapshot.preferences.timezone == 3 && snapshot.preferences.power_save);
 	assert(bepio_settings_controller_page(controller, (settings_page_t)99) == -EINVAL);
 	assert(settings_controller_about(controller) == 0);
+	extern int settings_test_navigate_failure_page;
+	settings_test_navigate_failure_page = SETTINGS_PAGE_STORAGE;
+	assert(bepio_settings_controller_page(controller, SETTINGS_PAGE_STORAGE) == -ENOMEM);
+	settings_test_navigate_failure_page = 0;
+	assert(settings_controller_snapshot(controller, &snapshot) == 0);
+	assert(snapshot.page == SETTINGS_PAGE_ABOUT);
 	assert(settings_app_close_request() == 0);
 	assert(bepio_app_manager_is_app_running());
+	assert(settings_controller_snapshot(controller, &snapshot) == 0);
+	assert(snapshot.page == SETTINGS_PAGE_DATETIME);
+	assert(settings_app_close_request() == 0);
 	assert(settings_controller_snapshot(controller, &snapshot) == 0);
 	assert(snapshot.page == SETTINGS_PAGE_HOME);
 	assert(bepio_app_manager_set_ui_available(false) == 0);

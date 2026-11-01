@@ -1,4 +1,6 @@
 #ifndef BEPIO_SETTINGS_ABOUT_H_
 #define BEPIO_SETTINGS_ABOUT_H_
-void bepio_settings_about_render(void);
+#include "../view.h"
+#include "lvgl.h"
+lv_obj_t *bepio_settings_about_build(void *app, void *payload);
 #endif

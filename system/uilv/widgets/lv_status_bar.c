@@ -32,7 +32,7 @@ void bepio_status_bar_init(void)
 	if (bar) { return; }
 	bar = lv_obj_create(lv_layer_top());
 	lv_obj_remove_style_all(bar);
-	lv_obj_set_size(bar, lv_pct(100), BEPIO_STATUS_BAR_HEIGHT);
+	lv_obj_set_size(bar, lv_pct(100), LV_STATUS_BAR_HEIGHT);
 	lv_obj_set_style_bg_color(bar, lv_color_hex(0x263c2e), 0);
 	lv_obj_set_style_bg_opa(bar, LV_OPA_COVER, 0);
 	lv_obj_set_style_text_color(bar, lv_color_hex(0xdce6cd), 0);

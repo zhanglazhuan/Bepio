@@ -105,6 +105,14 @@ python tests/unittest/messages/run.py
 
 ## 屏幕交互与 mock 预览
 
+页面控件由当前页面的上下文持有，跳转时释放旧上下文。页面位置、邮箱和选中消息保存在 model 的临时 `flow` 中；编辑正文和确认状态也由 model 持有，均不作为音频写入 Flash。
+`view.c` 只负责注册页面和退出时释放上下文；controller 根据 model 的 `flow` 使用 `page_navigator` 导航。`pages/messages_list.c`、
+`messages_detail.c`、`messages_compose.c`、`messages_confirm.c` 分别绘制列表、
+会话详情、编辑和确认页。共同的按钮及提示位于 `messages_page_common.c`，
+每个页面文件都有对应的 `.h` 声明入口；共同控件声明位于
+`messages_page_common.h`，页面上下文结构只在内部的
+`messages_page_context.h` 中定义。
+
 320×240 横屏界面默认显示 Inbox，空箱显示 No messages yet。列表按号码合并，同一号码只显示最近一条；点开后按本机消息 ID 顺序展示收发对话，收到的在左、发出的在右。现有消息记录没有 contact ID，联系人改号后旧消息仍按旧号码归组。支持未读标记、回复、草稿编辑和失败重试。
 列表直接显示消息，不显示搜索栏。
 新建时从联系人下拉列表选择收件人并输入正文，可保存草稿或预览后确认排队。删除需要确认，可取消。

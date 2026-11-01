@@ -11,6 +11,7 @@
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "mn316.h"
+#include "mbedtls/platform_util.h"
 #include "onenet.h"
 
 static SemaphoreHandle_t modem_lock;
@@ -32,7 +33,9 @@ static int command_locked(const char *command, const char *completion,
 		memcpy(wire, command, length);
 		wire[length++] = '\r';
 		wire[length++] = '\n';
-		if (uart_write_bytes(BEPIO_MN316_UART_PORT, wire, length) != (int)length ||
+		int written = uart_write_bytes(BEPIO_MN316_UART_PORT, wire, length);
+		mbedtls_platform_zeroize(wire, sizeof(wire));
+		if (written != (int)length ||
 		    uart_wait_tx_done(BEPIO_MN316_UART_PORT, pdMS_TO_TICKS(2000)) != ESP_OK) {
 			return -EIO;
 		}
@@ -127,7 +130,7 @@ int bepio_mn316_service_onenet_login(const char *device, const char *key_base64,
 	if (bepio_onenet_config_with_key(command, sizeof(command), device,
 					key_base64, expires)) return -EINVAL;
 	int ret = take_lock();
-	if (ret) { memset(command, 0, sizeof(command)); return ret; }
+	if (ret) { mbedtls_platform_zeroize(command, sizeof(command)); return ret; }
 	mqtt_open = false;
 	ret = command_locked("ATE0", NULL, reply, sizeof(reply), 2000);
 	if (!ret) ret = command_locked("AT+CGATT?", NULL, reply, sizeof(reply), 2000);
@@ -139,7 +142,7 @@ int bepio_mn316_service_onenet_login(const char *device, const char *key_base64,
 		ret = command_locked("AT+MQTTDEL", NULL, reply, sizeof(reply), 5000);
 	}
 	if (!ret) ret = command_locked(command, NULL, reply, sizeof(reply), 5000);
-	memset(command, 0, sizeof(command));
+	mbedtls_platform_zeroize(command, sizeof(command));
 	if (!ret) ret = command_locked("AT+MQTTOPEN=1,1,0,0,0,\"\",\"\"",
 					"+MQTTOPEN:OK", reply, sizeof(reply), 60000);
 	mqtt_open = ret == 0;
@@ -192,6 +195,7 @@ int bepio_mn316_service_mqtt_publish(const char *topic, const char *payload)
 			command[used++] = '"'; command[used] = '\0';
 			ret = command_locked(command, NULL, reply, sizeof(reply), 5000);
 		}
+		mbedtls_platform_zeroize(command, sizeof(command));
 	}
 	xSemaphoreGive(modem_lock);
 	return ret;

@@ -24,11 +24,9 @@ static const audio_codec_gpio_if_t *gpio;
 static const audio_codec_if_t *codec_if;
 static esp_codec_dev_handle_t codec;
 static int codec_address = -1;
-static bool open_attempted;
 
 void bepio_audio_board_deinit(void)
 {
-	bool channels_closed = open_attempted;
 	if (codec) {
 		bepio_audio_board_mute(true);
 		esp_codec_dev_close(codec);
@@ -40,12 +38,13 @@ void bepio_audio_board_deinit(void)
 	if (gpio) { audio_codec_delete_gpio_if(gpio); gpio = NULL; }
 	if (control) { audio_codec_delete_ctrl_if(control); control = NULL; }
 	if (rx) {
-		if (!channels_closed) { i2s_channel_disable(rx); }
+		/* close() may already have disabled the channel; a second disable is safe. */
+		(void)i2s_channel_disable(rx);
 		i2s_del_channel(rx);
 		rx = NULL;
 	}
 	if (tx) {
-		if (!channels_closed) { i2s_channel_disable(tx); }
+		(void)i2s_channel_disable(tx);
 		i2s_del_channel(tx);
 		tx = NULL;
 	}
@@ -54,7 +53,6 @@ void bepio_audio_board_deinit(void)
 	bepio_audio_soft_i2c_deinit();
 #endif
 	codec_address = -1;
-	open_attempted = false;
 }
 
 esp_err_t bepio_audio_board_init(bool digital_mic, int volume, int gain_db)
@@ -175,7 +173,6 @@ esp_err_t bepio_audio_board_init(bool digital_mic, int volume, int gain_db)
 		.mclk_multiple = BEPIO_AUDIO_MCLK_MULTIPLE,
 	};
 	ESP_LOGI(TAG, "=== CODEC format and enable BEGIN ===");
-	open_attempted = true;
 	ESP_GOTO_ON_ERROR(esp_codec_dev_open(codec, &format), fail, TAG, "Codec format");
 	ESP_LOGI(TAG, "=== CODEC format and enable END ===");
 	ESP_GOTO_ON_ERROR(bepio_audio_board_volume(volume), fail, TAG, "DAC volume");

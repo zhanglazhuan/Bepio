@@ -369,7 +369,7 @@ static int mqtt_test(mbedtls_ssl_context *ssl, const bepio_mn316_tls_credentials
 					ESP_LOGW(TAG, "MESSAGE IGNORED: To is not this device");
 					goto heartbeat;
 				}
-				ESP_LOGI(TAG, "DOWNLINK PASS bytes=%u payload=%.*s", (unsigned)count, (int)count, payload);
+				ESP_LOGI(TAG, "DOWNLINK PASS bytes=%u", (unsigned)count);
 				/* Reply location belongs to this device, not to the sender.
 				 * No location sensor is connected in this test application.
 				 */

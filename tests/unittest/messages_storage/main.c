@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <errno.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <string.h>
 #include "messaging.h"
@@ -10,6 +11,17 @@ static unsigned char flash[8192];
 static size_t flash_size;
 static int write_error;
 static unsigned saved_days;
+typedef struct {
+	char remote_id[BEPIO_MESSAGE_REMOTE_ID_MAX + 1];
+	char phone[BEPIO_MESSAGE_PHONE_MAX + 1];
+	bool simulated;
+} seen_entry_t;
+typedef struct {
+	uint32_t magic, next_id, inbox_count, outbox_count, seen_count, seen_next;
+	bepio_message_t inbox[CONFIG_BEPIO_MESSAGES_INBOX_CAPACITY];
+	bepio_message_t outbox[CONFIG_BEPIO_MESSAGES_OUTBOX_CAPACITY];
+	seen_entry_t seen[CONFIG_BEPIO_MESSAGES_INBOX_CAPACITY];
+} snapshot_t;
 
 int bepio_message_file_mount(void) { return 0; }
 int bepio_message_file_read(void *data, size_t size)
@@ -69,6 +81,22 @@ int main(void)
 	assert(bepio_messaging_delete(BEPIO_MESSAGE_OUTBOX, outgoing) == 0);
 	assert(bepio_messaging_init() == 0);
 	assert(bepio_messaging_get(BEPIO_MESSAGE_OUTBOX, outgoing, false, &message) == -ENOENT);
-	puts("PASS: message text snapshot restore, retention policy, deletion rollback");
+	assert(flash_size == sizeof(snapshot_t));
+	uint32_t seen_count;
+	memcpy(&seen_count, flash + offsetof(snapshot_t, seen_count), sizeof(seen_count));
+	assert(seen_count);
+	unsigned char *remote = flash + offsetof(snapshot_t, seen) + offsetof(seen_entry_t, remote_id);
+	char remote_backup[BEPIO_MESSAGE_REMOTE_ID_MAX + 1];
+	memcpy(remote_backup, remote, sizeof(remote_backup));
+	memset(remote, 'X', sizeof(remote_backup));
+	assert(bepio_messaging_init() == -EIO);
+	memcpy(remote, remote_backup, sizeof(remote_backup));
+	uint32_t exhausted = UINT32_MAX;
+	assert(flash_size >= 8);
+	memcpy(flash + 4, &exhausted, sizeof(exhausted));
+	assert(bepio_messaging_init() == 0);
+	assert(bepio_messaging_submit(0, &payload, &outgoing) == -EOVERFLOW);
+	assert(bepio_messaging_receive("remote-2", &payload, now, false, &incoming) == -EOVERFLOW);
+	puts("PASS: message text restore, retention, rollback, and ID exhaustion");
 	return 0;
 }

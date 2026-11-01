@@ -22,24 +22,42 @@ LVGL输入定时器设10ms、显示刷新定时器设20ms（目标50Hz），GUI�
 ## 公共页面与系统导航
 
 `widgets/lv_page.*` 按 DeepStoa 的 `lv_page` 骨架移植，接口以 `bepio_` 为前缀：
-顶层常驻状态栏 24px、页面 header 44px、左上返回触摸区域 40×40、内容区 240×232、底部手势条 20px。
+顶层常驻状态栏 24px、页面 header 32px、左上返回触摸区域 40×32、内容区 320×168、底部预留 16px。
 页面返回按钮调用 app-manager 的 back 分发，应用可消费返回事件以关闭键盘、返回上级或处理未保存内容。
 应用只清理/渲染 `page.container`，不清理公共 header 和状态栏。
+`lv_page.c` 从内容区所属 screen 取得页头对象，不保留全局的当前页面指针；
+Contacts→Messages 的动作回调由 Contacts controller 注入，公共页面控件不负责业务跳转。
 
 `widgets/lv_status_bar.*` 沿用 DeepStoa 的 `lv_layer_top()` 常驻方案，仅在文本变化时刷新 label。
 默认时间 `--:--`、蜂窝状态 `NB --`、电量 `--%`。Bepio 尚无已接入的时钟同步、电量采集与蜂窝注册状态源；
 这些字段不伪造数值。后续由 GUI 任务调用 `bepio_status_bar_update()` 填入已验证数据。
 
-`widgets/bepio_navigation.*` 按 DeepStoa 的全局 indev 监控方式识别上划：从屏幕底部 24px 内起划，
+`system/launcher/launcher_gesture.*` 按 DeepStoa 的全局 indev 监控方式识别上划：从屏幕底部 24px 内起划，
 上移至少 40px，横向偏移不超过 40px。只在 app 打开时显示退出确认；Cancel 保持当前界面，
-Exit 异步停止当前 app 并回到 Launcher，不逐层执行返回。未保存编辑的保留行为由应用 stop/start 策略决定，
+Exit 停止当前 app 并回到 Launcher，不逐层执行返回。确认界面使用从 DeepStoa 适配的
+`widgets/lv_bottom_sheet.*`，Toast 使用 `widgets/lv_toast.*`。
+未保存编辑的保留行为由应用 stop/start 策略决定，
 Messages 会保留内存中的编辑状态；Contacts 的未保存编辑会被清除，已保存联系人仍保留到重启。
-退出弹窗明确提示可能丢失未保存编辑。
-键盘与应用内容位于手势区上方。触摸输入在初始化后仅安装一次导航监听。
+键盘与应用内容位于手势区上方。触摸输入初始化后通过 UI 平台回调安装一次手势监听。
 
 移植来源：`D:/Codes/DeepStoa/system/uilv/widgets/lv_page.*`、`lv_status_bar.*` 与
 `system/launcher/launcher_gesture.c`；保留 DeepStoa/EPOS 来源与 GPL-3.0-only 声明。
-未引入其电子纸、Wi-Fi、字体/图片资源或 Zephyr 运行依赖。
+未引入其电子纸驱动、Wi-Fi、字体图片资源或 Zephyr 运行依赖。
+
+## Framework、theme 与 utils
+
+`framework/page_navigator.h` 从 DeepStoa 原样复制；`.c` 仅把 DeepStoa
+`log_system.h` 的两处导航日志替换为 ESP-IDF `ESP_LOGD`，导航实现保持一致。
+当前应用仍通过 Bepio app manager 的内容页切换；navigator 作为完整可用的
+独立框架接口提供，不强制现有应用改成整屏导航。
+
+`theme/lv_theme_hardcore.*` 保留调用接口，底层改用 LVGL 默认彩色主题，
+主色为绿色、辅色为蓝色，启动时为 RGB565 LCD display 设置。
+`lv_ui_style_guide.*` 使用对应的彩色按钮、下拉与开关样式，并把尺寸调整到
+320×240。utils 的图片宏改为 LVGL 9 `LV_IMAGE_DECLARE`；
+`ui_fonts.*` 使用已链接的 Montserrat 字体和 LVGL symbol，不引用 DeepStoa
+未移植的图标字库。LCD 局部重绘由 LVGL 自身的脏区机制处理。
+以上 UI 接口仅在 LVGL 所属任务调用。尚需实板确认主题颜色、字体可读性和刷新性能。
 
 预览见 [navigation-preview.png](../../docs/assets/navigation-preview.png)，为实际 LVGL 主机渲染。
 实板仍需检查状态栏/内容边界、四角触摸、左上返回、底部上划确认与键盘打开时的退出。

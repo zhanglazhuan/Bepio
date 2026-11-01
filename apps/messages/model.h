@@ -11,7 +11,20 @@ typedef enum {
 	MESSAGES_PENDING_DELETE,
 	MESSAGES_PENDING_LEAVE
 } messages_pending_t;
+typedef enum {
+	MESSAGES_PAGE_HOME,
+	MESSAGES_PAGE_BOX,
+	MESSAGES_PAGE_DETAIL,
+	MESSAGES_PAGE_COMPOSE,
+	MESSAGES_PAGE_CONFIRM
+} messages_page_t;
 typedef struct {
+	messages_page_t page, return_page;
+	bepio_message_box_t box;
+	uint32_t selected_id;
+} messages_flow_t;
+typedef struct {
+	messages_flow_t flow;
 	bool editing, dirty;
 	uint32_t draft_id;
 	bepio_message_payload_t editor;

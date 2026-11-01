@@ -8,10 +8,18 @@ set(CONFIG_LV_USE_THORVG_INTERNAL OFF CACHE BOOL "" FORCE)
 add_subdirectory("${BEPIO_ROOT}/managed_components/lvgl__lvgl" lvgl)
 add_executable(messages_preview main.c
     "${BEPIO_ROOT}/apps/messages/view.c"
+    "${BEPIO_ROOT}/apps/messages/pages/messages_page_common.c"
+    "${BEPIO_ROOT}/apps/messages/pages/messages_list.c"
+    "${BEPIO_ROOT}/apps/messages/pages/messages_detail.c"
+    "${BEPIO_ROOT}/apps/messages/pages/messages_compose.c"
+    "${BEPIO_ROOT}/apps/messages/pages/messages_confirm.c"
+    "${BEPIO_ROOT}/system/uilv/framework/page_navigator.c"
     "${BEPIO_ROOT}/apps/messages/model.c"
     "${BEPIO_ROOT}/apps/messages/controller.c"
     "${BEPIO_ROOT}/system/services/messaging/messaging.c")
-target_include_directories(messages_preview PRIVATE "${BEPIO_ROOT}/tests/unittest/app_manager/host"
+target_include_directories(messages_preview PRIVATE "${BEPIO_ROOT}/system/uilv/framework"
+    "${BEPIO_ROOT}/tests/integration/launcher_preview/host"
+    "${BEPIO_ROOT}/tests/unittest/app_manager/host"
     "${BEPIO_ROOT}/apps/messages" "${BEPIO_ROOT}/system/services/messaging")
 target_compile_definitions(messages_preview PRIVATE BEPIO_MESSAGES_PREVIEW=1 CONFIG_BEPIO_MESSAGES_INBOX_CAPACITY=20 CONFIG_BEPIO_MESSAGES_OUTBOX_CAPACITY=20)
 target_compile_options(messages_preview PRIVATE -Wall -Wextra -Werror -UNDEBUG -include "${BEPIO_ROOT}/tests/unittest/messages/host/errno_compat.h")
@@ -24,7 +32,7 @@ endif()
 set(BEPIO_WIDGET_SOURCES
     "${BEPIO_ROOT}/system/uilv/widgets/lv_page.c"
     "${BEPIO_ROOT}/system/uilv/widgets/lv_status_bar.c"
-    "${BEPIO_ROOT}/system/uilv/widgets/bepio_navigation.c")
+    )
 
 target_sources(messages_preview PRIVATE ${BEPIO_WIDGET_SOURCES})
 target_include_directories(messages_preview PRIVATE "${BEPIO_ROOT}/system/uilv/widgets")

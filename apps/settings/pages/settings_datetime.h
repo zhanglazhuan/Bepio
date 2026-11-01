@@ -1,4 +1,6 @@
 #ifndef BEPIO_SETTINGS_DATETIME_H_
 #define BEPIO_SETTINGS_DATETIME_H_
-void bepio_settings_datetime_render(void);
+#include "../view.h"
+#include "lvgl.h"
+lv_obj_t *bepio_settings_datetime_build(void *app, void *payload);
 #endif

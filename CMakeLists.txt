@@ -19,11 +19,34 @@ set(EXTRA_COMPONENT_DIRS
     apps/settings
     apps/contacts
     apps/messages
-    apps/chat
+    apps/chats
 )
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 idf_build_set_property(MINIMAL_BUILD ON)
 project(Bepio)
+
+if(CONFIG_BEPIO_PRODUCTION_BUILD)
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    if(DEFINED SDKCONFIG)
+        set(release_config "${SDKCONFIG}")
+    else()
+        set(release_config "${CMAKE_SOURCE_DIR}/sdkconfig")
+    endif()
+    if(IS_ABSOLUTE "${CONFIG_PARTITION_TABLE_CUSTOM_FILENAME}")
+        set(release_partitions "${CONFIG_PARTITION_TABLE_CUSTOM_FILENAME}")
+    else()
+        set(release_partitions "${CMAKE_SOURCE_DIR}/${CONFIG_PARTITION_TABLE_CUSTOM_FILENAME}")
+    endif()
+    execute_process(
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tools/check_production.py"
+                --config "${release_config}" --partitions "${release_partitions}"
+        RESULT_VARIABLE release_result
+        OUTPUT_VARIABLE release_output
+        ERROR_VARIABLE release_error)
+    if(NOT release_result EQUAL 0)
+        message(FATAL_ERROR "Production release gate:\n${release_output}${release_error}")
+    endif()
+endif()
 
 # Keep graphics hot paths out of the project's default -Og debug build.
 # Set this after project(), when IDF component targets exist; do not edit

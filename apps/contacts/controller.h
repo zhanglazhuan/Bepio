@@ -8,7 +8,11 @@ typedef struct {
 	contacts_model_t *model;
 	contacts_view_t *view;
 	bool active;
+	int (*compose_message)(const char *phone, const char *name);
 } contacts_controller_t;
+
+void contacts_controller_set_compose_handler(contacts_controller_t *controller,
+	int (*handler)(const char *phone, const char *name));
 
 void contacts_controller_init(contacts_controller_t *controller,
 			      contacts_model_t *model, contacts_view_t *view);

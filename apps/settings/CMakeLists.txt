@@ -2,7 +2,7 @@ set(sources)
 set(dependencies uilv lvgl platform appmgr account wifi messaging)
 if(CONFIG_BEPIO_APP_SETTINGS)
     list(APPEND sources "app.c" "model.c" "view.c" "controller.c"
-        "pages/settings_page_common.c"
+        "pages/settings_page_context.c"
         "pages/settings_home.c"
         "pages/settings_id.c"
         "pages/settings_datetime.c"

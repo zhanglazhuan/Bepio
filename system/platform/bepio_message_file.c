@@ -1,6 +1,7 @@
 #include "bepio_message_file.h"
 #include "bepio_store.h"
 #include "esp_spiffs.h"
+#include "esp_partition.h"
 #include <errno.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -21,6 +22,23 @@ static bool selection_ready;
 static const char *active_path;
 static uint32_t active_generation;
 
+static bool storage_blank(void)
+{
+	const esp_partition_t *partition = esp_partition_find_first(ESP_PARTITION_TYPE_DATA,
+		ESP_PARTITION_SUBTYPE_DATA_SPIFFS, "storage");
+	if (!partition) { return false; }
+	uint8_t bytes[256];
+	for (size_t offset = 0; offset < partition->size; offset += sizeof(bytes)) {
+		size_t count = partition->size - offset < sizeof(bytes) ?
+			partition->size - offset : sizeof(bytes);
+		if (esp_partition_read(partition, offset, bytes, count) != ESP_OK) { return false; }
+		for (size_t i = 0; i < count; i++) {
+			if (bytes[i] != 0xff) { return false; }
+		}
+	}
+	return true;
+}
+
 int bepio_message_file_mount(void)
 {
 	if (mounted) { return 0; }
@@ -35,7 +53,7 @@ int bepio_message_file_mount(void)
 	if (!stored && (size != sizeof(initialized) || initialized != 1)) { return -EIO; }
 	esp_err_t ret = esp_vfs_spiffs_register(&conf);
 	if (ret != ESP_OK) {
-		if (!stored) { return -EIO; }
+		if (!stored || !storage_blank()) { return -EIO; }
 		conf.format_if_mount_failed = true;
 		if (esp_vfs_spiffs_register(&conf) != ESP_OK) { return -EIO; }
 	}
@@ -45,7 +63,12 @@ int bepio_message_file_mount(void)
 	active_generation = 0;
 	if (stored == -ENOENT) {
 		initialized = 1;
-		return bepio_store_write("bepio_msgs", "fs_init", &initialized, sizeof(initialized));
+		int error = bepio_store_write("bepio_msgs", "fs_init", &initialized, sizeof(initialized));
+		if (error) {
+			(void)esp_vfs_spiffs_unregister("storage");
+			mounted = false;
+			return error;
+		}
 	}
 	return 0;
 }
@@ -115,12 +138,20 @@ static uint32_t slot_generation(const char *path)
 	return generation;
 }
 
+static bool newer_generation(uint32_t left, uint32_t right)
+{
+	/* V2 sequence wraps from UINT32_MAX to 1; V1 has generation zero. */
+	if (!left) { return false; }
+	if (!right) { return true; }
+	return left != right && (uint32_t)(left - right) < 0x80000000u;
+}
+
 int bepio_message_file_read(void *data, size_t size)
 {
 	if (!mounted || !data) { return -EINVAL; }
 	const char *first = MESSAGE_PATH;
 	const char *second = TEMP_PATH;
-	if (slot_generation(second) > slot_generation(first)) {
+	if (newer_generation(slot_generation(second), slot_generation(first))) {
 		first = TEMP_PATH;
 		second = MESSAGE_PATH;
 	}

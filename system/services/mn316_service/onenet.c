@@ -4,6 +4,7 @@
 #include <string.h>
 #include "mbedtls/base64.h"
 #include "mbedtls/md.h"
+#include "mbedtls/platform_util.h"
 
 #if __has_include("onenet_local.h")
 #include "onenet_local.h"
@@ -71,8 +72,11 @@ int bepio_onenet_config_with_key(char *command, size_t capacity, const char *dev
 		device, expires, escaped);
 	ret = length >= 0 && (size_t)length < capacity ? 0 : -1;
 out:
-	memset(key, 0, sizeof(key));
-	memset(digest, 0, sizeof(digest));
+	mbedtls_platform_zeroize(key, sizeof(key));
+	mbedtls_platform_zeroize(digest, sizeof(digest));
+	mbedtls_platform_zeroize(signature, sizeof(signature));
+	mbedtls_platform_zeroize(escaped, sizeof(escaped));
+	mbedtls_platform_zeroize(message, sizeof(message));
 	if (ret) {
 		command[0] = '\0';
 	}

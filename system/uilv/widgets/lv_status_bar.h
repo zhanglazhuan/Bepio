@@ -2,7 +2,7 @@
 #ifndef BEPIO_LV_STATUS_BAR_H_
 #define BEPIO_LV_STATUS_BAR_H_
 #include "lvgl.h"
-#define BEPIO_STATUS_BAR_HEIGHT 20
+#define LV_STATUS_BAR_HEIGHT 20
 void bepio_status_bar_init(void);
 /* LVGL owner thread only. Updates only the clock. */
 void bepio_status_bar_set_time(const char *text);

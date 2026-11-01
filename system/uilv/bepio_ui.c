@@ -1,7 +1,9 @@
 #include "bepio_ui.h"
 #include "bepio_ui_preferences.h"
 #include "bepio_ui_display.h"
-#include "bepio_navigation.h"
+#include "lv_theme_hardcore.h"
+#include "ui_fonts.h"
+#include "lv_status_bar.h"
 #include "bepio_lcd.h"
 #include "bepio_display.h"
 #include "bepio_orientation.h"
@@ -21,6 +23,7 @@ static bool started;
 static SemaphoreHandle_t boot_done;
 static esp_err_t boot_result;
 static void (*build_callback)(void);
+static void (*input_callback)(lv_indev_t *input);
 static portMUX_TYPE touch_lock = portMUX_INITIALIZER_UNLOCKED;
 
 static struct {
@@ -102,9 +105,14 @@ static esp_err_t initialize_ui(void)
 	lv_tick_set_cb(ticks);
 	lv_display_t *display = lv_display_create(BEPIO_SCREEN_WIDTH, BEPIO_SCREEN_HEIGHT);
 	if (!display) { return ESP_ERR_NO_MEM; }
+	ui_fonts_init();
+	lv_theme_t *theme = lv_theme_hardcore_init(display, false, &custom_font_normal);
+	if (!theme) { return ESP_ERR_NO_MEM; }
+	lv_display_set_theme(display, theme);
 	ret = bepio_ui_display_init(display, display_failed);
 	if (ret != ESP_OK) { return ret; }
 	bepio_ui_preferences_init();
+	bepio_status_bar_init();
 	build_callback();
 	lv_refr_now(display);
 	ret = bepio_ui_display_poll(true);
@@ -127,7 +135,7 @@ static esp_err_t initialize_ui(void)
 		lv_indev_set_type(input, LV_INDEV_TYPE_POINTER);
 		lv_indev_set_read_cb(input, touch_read);
 		lv_timer_set_period(lv_indev_get_read_timer(input), TOUCH_PERIOD_MS);
-		bepio_navigation_attach_input(input);
+		if (input_callback) { input_callback(input); }
 		if (xTaskCreate(touch_task, "bepio_touch", 3072, NULL, 4, NULL) != pdPASS) { return ESP_ERR_NO_MEM; }
 	} else {
 		ESP_LOGW(TAG, "Touch unavailable (%s); launcher remains visible", esp_err_to_name(ret));
@@ -154,12 +162,14 @@ static void ui_task(void *arg)
 	}
 }
 
-esp_err_t bepio_ui_start(void (*build_screen)(void))
+esp_err_t bepio_ui_start(void (*build_screen)(void),
+	void (*attach_input)(lv_indev_t *input))
 {
 	if (!build_screen) { return ESP_ERR_INVALID_ARG; }
 	if (started) { return ESP_ERR_INVALID_STATE; }
 	started = true;
 	build_callback = build_screen;
+	input_callback = attach_input;
 	boot_done = xSemaphoreCreateBinary();
 	if (!boot_done) { return ESP_ERR_NO_MEM; }
 	if (xTaskCreate(ui_task, "bepio_ui", 10240, NULL, 5, NULL) != pdPASS) { return ESP_ERR_NO_MEM; }

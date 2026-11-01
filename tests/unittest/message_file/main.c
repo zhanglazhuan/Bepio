@@ -7,6 +7,11 @@
 #include "bepio_store.h"
 
 static int initialized;
+int spiffs_fail_once;
+int spiffs_format_calls;
+int spiffs_unmount_calls;
+int store_error;
+uint8_t partition_byte = 0xff;
 int bepio_store_read(const char *space, const char *key, void *data, size_t *size)
 {
 	assert(!strcmp(space, "bepio_msgs") && !strcmp(key, "fs_init"));
@@ -17,13 +22,33 @@ int bepio_store_write(const char *space, const char *key, const void *data, size
 {
 	assert(!strcmp(space, "bepio_msgs") && !strcmp(key, "fs_init"));
 	assert(size == 1 && *(const uint8_t *)data == 1);
+	if (store_error) { return store_error; }
 	initialized = 1; return 0;
 }
 
 int main(int argc, char **argv)
 {
-	assert(argc == 2);
+	assert(argc == 4);
+	if (!strcmp(argv[3], "blank")) { spiffs_fail_once = 1; }
+	if (!strcmp(argv[3], "corrupt")) { spiffs_fail_once = 1; partition_byte = 0; }
+	if (!strcmp(argv[3], "existing")) { initialized = 1; spiffs_fail_once = 1; }
+	if (!strcmp(argv[3], "marker")) { store_error = -EIO; }
+	if (!strcmp(argv[3], "corrupt") || !strcmp(argv[3], "existing")) {
+		assert(bepio_message_file_mount() == -EIO);
+		assert(!spiffs_format_calls);
+		puts("PASS: nonblank or initialized storage never formatted");
+		return 0;
+	}
+	if (!strcmp(argv[3], "marker")) {
+		assert(bepio_message_file_mount() == -EIO);
+		assert(spiffs_unmount_calls == 1);
+		store_error = 0;
+		assert(bepio_message_file_mount() == 0 && initialized);
+		puts("PASS: NVS marker failure unmounts and allows retry");
+		return 0;
+	}
 	assert(bepio_message_file_mount() == 0 && initialized);
+	assert(spiffs_format_calls == (!strcmp(argv[3], "blank") ? 1 : 0));
 	uint8_t input[256], output[256];
 	for (unsigned i = 0; i < sizeof(input); i++) { input[i] = i; }
 	assert(bepio_message_file_read(output, sizeof(output)) == -ENOENT);
@@ -51,6 +76,21 @@ int main(int argc, char **argv)
 	fclose(file);
 	assert(bepio_message_file_read(output, sizeof(output)) == 0);
 	assert(output[0] == 0);
-	puts("PASS: legacy read, repeated writes, and corrupt latest fallback");
+	assert(remove(argv[2]) == 0);
+	file = fopen(argv[1], "wb"); assert(file);
+	assert(fputs("BEPIO_MESSAGES_V2 4294967295\n", file) != EOF);
+	hash = 2166136261u;
+	for (unsigned i = 0; i < sizeof(input); i++) {
+		assert(fprintf(file, "%02x", input[i]) == 2);
+		hash = (hash ^ input[i]) * 16777619u;
+	}
+	assert(fprintf(file, "\n%08x\n", (unsigned)hash) > 0);
+	fclose(file);
+	assert(bepio_message_file_read(output, sizeof(output)) == 0);
+	input[0] = 99;
+	assert(bepio_message_file_write(input, sizeof(input)) == 0);
+	assert(bepio_message_file_read(output, sizeof(output)) == 0);
+	assert(!memcmp(input, output, sizeof(input)));
+	puts("PASS: legacy read, repeated writes, corrupt fallback and generation wrap");
 	return 0;
 }

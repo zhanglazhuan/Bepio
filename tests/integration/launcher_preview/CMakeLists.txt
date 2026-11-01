@@ -10,7 +10,8 @@ add_executable(launcher_preview main.c "${BEPIO_ROOT}/system/launcher/bepio_laun
 target_sources(launcher_preview PRIVATE "${BEPIO_ROOT}/system/uilv/imgs/icon_40x40/ic_contacts.c")
 target_sources(launcher_preview PRIVATE
     "${BEPIO_ROOT}/system/uilv/imgs/icon_40x40/ic_mail.c"
-    "${BEPIO_ROOT}/system/uilv/imgs/icon_40x40/ic_settings.c")
+    "${BEPIO_ROOT}/system/uilv/imgs/icon_40x40/ic_settings.c"
+    "${BEPIO_ROOT}/system/uilv/imgs/icon_40x40/ic_voice_chat.c")
 target_include_directories(launcher_preview PRIVATE host "${BEPIO_ROOT}" "${BEPIO_ROOT}/system/launcher" "${BEPIO_ROOT}/system/appmgr")
 target_link_libraries(launcher_preview PRIVATE lvgl m)
 
@@ -25,8 +26,11 @@ add_executable(contacts_preview contacts_main.c
     "${BEPIO_ROOT}/apps/contacts/pages/contacts_edit.c"
     "${BEPIO_ROOT}/apps/contacts/pages/contacts_delete_confirm.c"
     "${BEPIO_ROOT}/apps/contacts/pages/contacts_discard_confirm.c"
+    "${BEPIO_ROOT}/system/uilv/framework/page_navigator.c"
  "${BEPIO_ROOT}/system/appmgr/bepio_app_manager.c")
 target_include_directories(contacts_preview PRIVATE
+    "${BEPIO_ROOT}/system/uilv/framework"
+    "${CMAKE_CURRENT_LIST_DIR}/host"
     "${BEPIO_ROOT}/tests/unittest/app_manager/host" "${BEPIO_ROOT}"
     "${BEPIO_ROOT}/apps/contacts" "${BEPIO_ROOT}/system/appmgr")
 target_compile_definitions(contacts_preview PRIVATE CONFIG_BEPIO_MAX_APPS=8
@@ -35,8 +39,14 @@ target_link_libraries(contacts_preview PRIVATE lvgl m)
 
 set(BEPIO_WIDGET_SOURCES
     "${BEPIO_ROOT}/system/uilv/widgets/lv_page.c"
-    "${BEPIO_ROOT}/system/uilv/widgets/lv_status_bar.c"
-    "${BEPIO_ROOT}/system/uilv/widgets/bepio_navigation.c")
+    "${BEPIO_ROOT}/system/uilv/widgets/lv_status_bar.c")
+
+target_sources(launcher_preview PRIVATE
+    "${BEPIO_ROOT}/system/launcher/launcher_gesture.c"
+    "${BEPIO_ROOT}/system/uilv/widgets/lv_bottom_sheet.c"
+    "${BEPIO_ROOT}/system/uilv/widgets/lv_toast.c"
+    "${BEPIO_ROOT}/system/uilv/theme/lv_ui_style_guide.c")
+target_include_directories(launcher_preview PRIVATE "${BEPIO_ROOT}/system/uilv/theme")
 
 foreach(target launcher_preview contacts_preview)
     target_sources(${target} PRIVATE ${BEPIO_WIDGET_SOURCES})
@@ -64,7 +74,9 @@ add_executable(settings_preview settings_main.c
     "${BEPIO_ROOT}/system/uilv/imgs/icon_24x24/ic_visibility_off_24.c"
     "${BEPIO_ROOT}/apps/settings/app.c" "${BEPIO_ROOT}/apps/settings/model.c"
     "${BEPIO_ROOT}/apps/settings/controller.c" "${BEPIO_ROOT}/apps/settings/view.c"
-    "${BEPIO_ROOT}/apps/settings/pages/settings_page_common.c"
+    "${BEPIO_ROOT}/apps/settings/pages/settings_page_context.c"
+    "${BEPIO_ROOT}/system/uilv/framework/page_navigator.c"
+    "${BEPIO_ROOT}/system/uilv/widgets/lv_controls.c"
     "${BEPIO_ROOT}/apps/settings/pages/settings_home.c"
     "${BEPIO_ROOT}/apps/settings/pages/settings_id.c"
     "${BEPIO_ROOT}/apps/settings/pages/settings_datetime.c"
@@ -77,6 +89,8 @@ add_executable(settings_preview settings_main.c
     "${BEPIO_ROOT}/apps/settings/pages/settings_storage.c"
     "${BEPIO_ROOT}/system/appmgr/bepio_app_manager.c" ${BEPIO_WIDGET_SOURCES})
 target_include_directories(settings_preview PRIVATE
+    "${BEPIO_ROOT}/system/uilv/framework"
+    "${CMAKE_CURRENT_LIST_DIR}/host"
     "${BEPIO_ROOT}/tests/unittest/app_manager/host" "${BEPIO_ROOT}"
     "${BEPIO_ROOT}/system/uilv" "${BEPIO_ROOT}/system/uilv/widgets"
     "${BEPIO_ROOT}/system/platform" "${BEPIO_ROOT}/system/services/account" "${BEPIO_ROOT}/system/services/wifi"

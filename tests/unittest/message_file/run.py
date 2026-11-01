@@ -19,4 +19,9 @@ with tempfile.TemporaryDirectory(prefix="bepio-message-file-") as directory:
         str(HERE / "main.c"), str(ROOT / "system/platform/bepio_message_file.c"),
         "-o", str(executable),
     ], check=True)
-    subprocess.run([str(executable), str(Path(directory) / "messages.txt")], check=True)
+    for mode in ("normal", "blank", "corrupt", "existing", "marker"):
+        main_file = Path(directory) / "messages.txt"
+        temp_file = Path(directory) / "messages.tmp"
+        main_file.unlink(missing_ok=True)
+        temp_file.unlink(missing_ok=True)
+        subprocess.run([str(executable), str(main_file), str(temp_file), mode], check=True)

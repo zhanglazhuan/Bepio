@@ -12,6 +12,12 @@
 static QueueHandle_t requests;
 static const char *TAG = "messages_voice";
 
+static void clear_text(char *value, size_t size)
+{
+	volatile char *byte = value;
+	while (size--) { *byte++ = 0; }
+}
+
 static esp_err_t write_pcm(const int16_t *mono, size_t samples, void *context)
 {
 	(void)context;
@@ -39,7 +45,12 @@ static void worker(void *context)
 		if (!ready) {
 			esp_err_t ret = bepio_tts_ready() ? ESP_OK : bepio_tts_init();
 			if (ret == ESP_OK) { ret = bepio_audio_board_init(false, 60, 24); }
-			if (ret != ESP_OK) { ESP_LOGE(TAG, "Audio init failed: %s", esp_err_to_name(ret)); continue; }
+			if (ret != ESP_OK) {
+				ESP_LOGE(TAG, "Audio init failed: %s", esp_err_to_name(ret));
+				bepio_audio_board_deinit();
+				clear_text(text, sizeof(text));
+				continue;
+			}
 			ready = true;
 		}
 		esp_err_t ret = bepio_audio_board_reset_output();
@@ -56,7 +67,12 @@ static void worker(void *context)
 			}
 		}
 		(void)bepio_audio_board_mute(true);
-		if (ret != ESP_OK) { ESP_LOGW(TAG, "TTS playback failed: %s", esp_err_to_name(ret)); }
+		if (ret != ESP_OK) {
+			ESP_LOGW(TAG, "TTS playback failed: %s", esp_err_to_name(ret));
+			bepio_audio_board_deinit();
+			ready = false;
+		}
+		clear_text(text, sizeof(text));
 	}
 }
 
@@ -77,5 +93,7 @@ int bepio_messages_voice_play(const char *text)
 	}
 	char request[BEPIO_TTS_TEXT_MAX + 1] = {0};
 	strcpy(request, text);
-	return xQueueSend(requests, request, 0) == pdPASS ? 0 : -EBUSY;
+	int ret = xQueueSend(requests, request, 0) == pdPASS ? 0 : -EBUSY;
+	clear_text(request, sizeof(request));
+	return ret;
 }

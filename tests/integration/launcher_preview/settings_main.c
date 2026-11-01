@@ -4,6 +4,8 @@
 #include "lvgl.h"
 #include "apps/settings/app.h"
 #include "apps/settings/pages/settings_wifi.h"
+#include "apps/settings/pages/settings_page_context.h"
+#include "apps/settings/pages/settings_wifi_connect.h"
 #include "bepio_app_manager.h"
 #include "lv_page.h"
 #include "bepio_account.h"
@@ -14,7 +16,7 @@
 
 static uint16_t frame[240 * 320], draw[320 * 16];
 static lv_display_t *display;
-static lv_obj_t *root;
+#define root (settings_app_get_controller()->view->root)
 static void page_back(lv_event_t *event)
 {
 	(void)event;
@@ -59,6 +61,7 @@ static void click(const char *value)
 	lv_obj_t *button = lv_obj_get_parent(label);
 	while (button && !lv_obj_check_type(button, &lv_button_class)) { button = lv_obj_get_parent(button); }
 	assert(button); lv_obj_send_event(button, LV_EVENT_CLICKED, NULL);
+	lv_tick_inc(10); lv_timer_handler();
 	lv_refr_now(display);
 }
 
@@ -126,7 +129,8 @@ static lv_obj_t *find_type(lv_obj_t *parent, const lv_obj_class_t *type)
 static void back_home(settings_controller_t *c)
 {
 	assert(settings_controller_back(c));
-	assert(c->view->page == SETTINGS_PAGE_HOME);
+	lv_tick_inc(10); lv_timer_handler();
+	assert(c->view->page_nav.current_page == SETTINGS_PAGE_HOME);
 }
 int main(int argc, char **argv)
 {
@@ -135,11 +139,15 @@ int main(int argc, char **argv)
 	lv_display_set_color_format(display, LV_COLOR_FORMAT_RGB565);
 	lv_display_set_buffers(display, draw, NULL, sizeof(draw), LV_DISPLAY_RENDER_MODE_PARTIAL);
 	lv_display_set_flush_cb(display, flush);
-	bepio_page_t page = bepio_page_create("Settings", true, page_back, NULL);
-	lv_screen_load(page.screen); root = page.container;
+	bepio_status_bar_init();
+	Page page = lv_page_create("Settings", true, page_back, NULL);
+	lv_screen_load(page.screen);
 	assert(bepio_settings_register() == 0);
-	assert(bepio_app_manager_show(NULL, root, NULL, "Settings") == 0);
+	assert(bepio_app_manager_show(NULL, page.container, NULL, "Settings") == 0);
 	settings_controller_t *c = settings_app_get_controller();
+	settings_controller_set_ui_available(c, false);
+	assert(c->view->page_nav.nav_ctx != NULL);
+	settings_controller_set_ui_available(c, true);
 	screenshot("settings-home");
 	lv_obj_t *card = lv_obj_get_parent(find_text(root, "bepio-aabbccddeeff"));
 	lv_obj_t *row = lv_obj_get_parent(find_text(root, "Datetime"));
@@ -150,9 +158,9 @@ int main(int argc, char **argv)
 	lv_obj_scroll_to_view(lv_obj_get_parent(find_text(root, "About")), LV_ANIM_OFF);
 	lv_refr_now(display);
 	lv_area_t bounds; lv_obj_get_coords(find_text(root, "About"), &bounds);
-	assert(bounds.y2 < 240 - BEPIO_PAGE_BOTTOM_HEIGHT);
+	assert(bounds.y2 < 240);
 	assert(lv_obj_get_y(lv_obj_get_parent(find_text(root, "Wi-Fi"))) < lv_obj_get_y(row));
-	click("Wi-Fi"); assert(c->view->page == SETTINGS_PAGE_WIFI);
+	click("Wi-Fi"); assert(c->view->page_nav.current_page == SETTINGS_PAGE_WIFI);
 	lv_obj_t *wifi_toggle = find_type(root, &lv_switch_class); assert(wifi_toggle);
 	assert(!find_text(root, "Wi-Fi is off"));
 	assert(!find_text(root, "Enable Wi-Fi to find networks"));
@@ -161,14 +169,14 @@ int main(int argc, char **argv)
 	assert(find_text(root, "Home Wi-Fi"));
 	wifi_fixture.scanning = true; wifi_fixture.revision++;
 	snprintf(wifi_fixture.status, sizeof(wifi_fixture.status), "Scanning...");
-	bepio_settings_wifi_refresh();
+	bepio_settings_wifi_refresh(c->view->page_nav.nav_ctx);
 	lv_obj_t *scanning = find_text(root, "Scanning..."); assert(scanning);
 	lv_obj_update_layout(root);
 	assert(lv_obj_get_parent(scanning) == root);
 	assert(lv_obj_get_y(scanning) == 38);
 	assert(lv_obj_get_style_text_align(scanning, 0) == LV_TEXT_ALIGN_CENTER);
 	wifi_fixture.scanning = false; wifi_fixture.revision++;
-	bepio_settings_wifi_refresh();
+	bepio_settings_wifi_refresh(c->view->page_nav.nav_ctx);
 	assert(!find_text(root, "-45dBm / Secured"));
 	assert(!find_text(root, "-64dBm / Open"));
 	lv_obj_update_layout(root);
@@ -176,7 +184,9 @@ int main(int argc, char **argv)
 	assert(!find_text(root, "Scan"));
 	assert(wifi_fixture.enabled);
 	lv_tick_inc(300); lv_timer_handler(); screenshot("settings-wifi");
-	click("Home Wi-Fi"); assert(c->view->page == SETTINGS_PAGE_WIFI_CONNECT);
+	click("Home Wi-Fi"); assert(c->view->page_nav.current_page == SETTINGS_PAGE_WIFI_CONNECT);
+	assert(c->view->page_nav.current_page == SETTINGS_PAGE_WIFI_CONNECT);
+	assert(!strcmp(bepio_settings_wifi_connect_ap(c->view->page_nav.nav_ctx)->ssid, "Home Wi-Fi"));
 	assert(!find_text(root, "Enter password to connect"));
 	lv_obj_t *password = find_type(root, &lv_textarea_class); assert(password);
 	assert(lv_textarea_get_password_mode(password));
@@ -190,9 +200,10 @@ int main(int argc, char **argv)
 	lv_textarea_set_text(password, "testpassword"); click("Connect");
 	assert(find_text(root, "Connected: 192.0.2.10"));
 	screenshot("settings-wifi-connected");
-	assert(settings_controller_back(c)); assert(c->view->page == SETTINGS_PAGE_WIFI);
+	assert(settings_controller_back(c)); assert(c->view->page_nav.current_page == SETTINGS_PAGE_WIFI);
+	lv_tick_inc(10); lv_timer_handler();
 	back_home(c);
-	click("Datetime"); assert(c->view->page == SETTINGS_PAGE_DATETIME);
+	click("Datetime"); assert(c->view->page_nav.current_page == SETTINGS_PAGE_DATETIME);
 	click("12h"); assert(!c->model->hour_24 && !applied_24);
 	lv_obj_t *dropdown = find_type(root, &lv_dropdown_class); assert(dropdown);
 	lv_dropdown_set_selected(dropdown, 6);
@@ -205,7 +216,7 @@ int main(int argc, char **argv)
 	lv_obj_send_event(toggle, LV_EVENT_VALUE_CHANGED, NULL);
 	assert(c->model->power_save && applied_save);
 	screenshot("settings-battery"); back_home(c);
-	click("Updates"); assert(c->view->page == SETTINGS_PAGE_UPDATES);
+	click("Updates"); assert(c->view->page_nav.current_page == SETTINGS_PAGE_UPDATES);
 	lv_obj_t *check = lv_obj_get_parent(find_text(root, "Check for updates"));
 	assert(check && !lv_obj_has_state(check, LV_STATE_DISABLED));
 	screenshot("settings-updates-ready");
@@ -219,13 +230,13 @@ int main(int argc, char **argv)
 	screenshot("settings-updates"); back_home(c);
 	click("Updates"); click("Check for updates"); back_home(c);
 	lv_tick_inc(1000); lv_timer_handler();
-	assert(c->view->page == SETTINGS_PAGE_HOME);
-	click("Usage"); assert(c->view->page == SETTINGS_PAGE_USAGE);
+	assert(c->view->page_nav.current_page == SETTINGS_PAGE_HOME);
+	click("Usage"); assert(c->view->page_nav.current_page == SETTINGS_PAGE_USAGE);
 	assert(find_text(root, "TX: 0 bytes\nRX: 0 bytes\nConnected: 0 min 0 sec\nChange cooldown: 0 sec"));
 	lv_tick_inc(1000); lv_timer_handler(); screenshot("settings-usage"); back_home(c);
 	lv_obj_update_layout(root);
 	assert(lv_obj_get_y(lv_obj_get_parent(find_text(root, "Storage"))) < lv_obj_get_y(lv_obj_get_parent(find_text(root, "Usage"))));
-	click("Storage"); assert(c->view->page == SETTINGS_PAGE_STORAGE);
+	click("Storage"); assert(c->view->page_nav.current_page == SETTINGS_PAGE_STORAGE);
 	assert(find_text(root, "Internal Flash: 16.00 MiB"));
 	assert(find_text(root, "Not mounted; usage unknown"));
 	assert(find_text(root, "Delete chats older than"));
@@ -240,8 +251,9 @@ int main(int argc, char **argv)
 	screenshot("settings-storage-retention");
 	screenshot("settings-storage-mounted"); back_home(c);
 	click("About"); assert(find_text(root, "Bepio v1\nESP32-S3\nHost preview fixture"));
-	screenshot("settings-about"); back_home(c);
-	click("bepio-aabbccddeeff"); assert(c->view->page == SETTINGS_PAGE_ID);
+	screenshot("settings-about"); click(LV_SYMBOL_LEFT);
+	assert(c->view->page_nav.current_page == SETTINGS_PAGE_HOME);
+	click("bepio-aabbccddeeff"); assert(c->view->page_nav.current_page == SETTINGS_PAGE_ID);
 	lv_obj_t *entry = find_type(root, &lv_textarea_class); assert(entry);
 	lv_obj_update_layout(root);
 	lv_obj_t *id_summary = lv_obj_get_child(root, 0);
@@ -250,8 +262,15 @@ int main(int argc, char **argv)
 	assert(find_text(root, "Offline: backend connection required"));
 	screenshot("settings-id"); back_home(c);
 	assert(bepio_app_manager_delete() == 0);
-	assert(bepio_app_manager_show(NULL, root, NULL, "Settings") == 0);
+	assert(bepio_app_manager_show(NULL, lv_obj_get_child(lv_screen_active(), 1), NULL, "Settings") == 0);
 	assert(!c->model->hour_24 && c->model->timezone == 6 && c->model->power_save);
-	assert(bepio_app_manager_delete() == 0);
+	click(LV_SYMBOL_LEFT);
+	settings_snapshot_t snapshot;
+	assert(settings_controller_snapshot(c, &snapshot) == -EACCES);
+	lv_obj_t *old_screen = lv_screen_active();
+	Page done = lv_page_create("Done", false, NULL, NULL);
+	lv_screen_load(done.screen);
+	lv_obj_delete_async(old_screen);
+	lv_tick_inc(10); lv_timer_handler();
 	puts("PASS Settings card/list geometry, pages/back, timezone/format, power saving, OTA state, ID and reopen");
 }

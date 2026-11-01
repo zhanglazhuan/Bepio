@@ -5,11 +5,29 @@
 
 BEPIO_MUTEX_DEFINE(contacts_lock);
 
+static void show_page(contacts_controller_t *controller)
+{
+	contacts_view_t *view = controller->view;
+	view->model = controller->model;
+	if (view->available && view->page_nav.registry) {
+		page_navigator_navigate_to(&view->page_nav, view,
+			controller->model->flow.page + 1, NULL);
+	}
+}
+
+void contacts_controller_set_compose_handler(contacts_controller_t *controller,
+	int (*handler)(const char *phone, const char *name))
+{
+	bepio_mutex_lock(contacts_lock);
+	controller->compose_message = handler;
+	bepio_mutex_unlock(contacts_lock);
+}
+
 int bepio_contacts_controller_toggle_favorite(contacts_controller_t *controller, uint32_t id)
 {
 	bepio_mutex_lock(contacts_lock);
 	int ret = controller->active ? bepio_contacts_model_toggle_favorite(controller->model, id) : -EACCES;
-	if (!ret) { contacts_view_render(controller->view, controller->model); }
+	if (!ret) { show_page(controller); }
 	bepio_mutex_unlock(contacts_lock);
 	return ret;
 }
@@ -52,7 +70,8 @@ void contacts_controller_init(contacts_controller_t *controller,
 	controller->model = model;
 	controller->view = view;
 	controller->active = true;
-	contacts_view_render(view, model);
+	model->flow = (contacts_flow_t){.page = CONTACTS_PAGE_LIST};
+	show_page(controller);
 	bepio_mutex_unlock(contacts_lock);
 }
 
@@ -69,21 +88,20 @@ bool contacts_controller_back(contacts_controller_t *controller)
 	bool consumed = false;
 
 	bepio_mutex_lock(contacts_lock);
-	if (controller->active && controller->view->page == CONTACTS_PAGE_LIST && controller->view->search_editing) {
-		controller->view->search_editing = false;
-		contacts_view_render(controller->view, controller->model);
+	if (controller->active && controller->model->flow.page == CONTACTS_PAGE_LIST && controller->model->flow.search_editing) {
+		controller->model->flow.search_editing = false;
+		show_page(controller);
 		consumed = true;
-	} else if (controller->active && controller->view->page != CONTACTS_PAGE_LIST) {
-		contacts_view_t *view = controller->view;
-		switch (view->page) {
+	} else if (controller->active && controller->model->flow.page != CONTACTS_PAGE_LIST) {
+		switch (controller->model->flow.page) {
 		case CONTACTS_PAGE_EDIT:
-			view->page = view->dirty ? CONTACTS_PAGE_DISCARD_CONFIRM : view->edit_return;
+			controller->model->flow.page = controller->model->flow.dirty ? CONTACTS_PAGE_DISCARD_CONFIRM : controller->model->flow.edit_return;
 			break;
-		case CONTACTS_PAGE_DELETE_CONFIRM: view->page = CONTACTS_PAGE_DETAIL; break;
-		case CONTACTS_PAGE_DISCARD_CONFIRM: view->page = CONTACTS_PAGE_EDIT; break;
-		default: view->page = CONTACTS_PAGE_LIST; view->selected_id = 0; break;
+		case CONTACTS_PAGE_DELETE_CONFIRM: controller->model->flow.page = CONTACTS_PAGE_DETAIL; break;
+		case CONTACTS_PAGE_DISCARD_CONFIRM: controller->model->flow.page = CONTACTS_PAGE_EDIT; break;
+		default: controller->model->flow.page = CONTACTS_PAGE_LIST; controller->model->flow.selected_id = 0; break;
 		}
-		contacts_view_render(view, controller->model);
+		show_page(controller);
 		consumed = true;
 	}
 	bepio_mutex_unlock(contacts_lock);
@@ -95,7 +113,7 @@ void contacts_controller_set_ui_available(contacts_controller_t *controller, boo
 	bepio_mutex_lock(contacts_lock);
 	if (controller->active) {
 		controller->view->available = available;
-		contacts_view_render(controller->view, controller->model);
+		show_page(controller);
 	}
 	bepio_mutex_unlock(contacts_lock);
 }
@@ -112,9 +130,9 @@ int contacts_controller_list(contacts_controller_t *controller, size_t *count)
 		ret = -EACCES;
 	} else {
 		*count = controller->model->count;
-		controller->view->page = CONTACTS_PAGE_LIST;
-		controller->view->selected_id = 0;
-		contacts_view_render(controller->view, controller->model);
+		controller->model->flow.page = CONTACTS_PAGE_LIST;
+		controller->model->flow.selected_id = 0;
+		show_page(controller);
 	}
 	bepio_mutex_unlock(contacts_lock);
 	return ret;
@@ -148,9 +166,9 @@ int contacts_controller_show(contacts_controller_t *controller, uint32_t id,
 	bepio_mutex_lock(contacts_lock);
 	ret = controller->active ? contacts_model_get(controller->model, id, entry) : -EACCES;
 	if (ret == 0) {
-		controller->view->page = CONTACTS_PAGE_DETAIL;
-		controller->view->selected_id = id;
-		contacts_view_render(controller->view, controller->model);
+		controller->model->flow.page = CONTACTS_PAGE_DETAIL;
+		controller->model->flow.selected_id = id;
+		show_page(controller);
 	}
 	bepio_mutex_unlock(contacts_lock);
 	return ret;
@@ -164,9 +182,9 @@ int contacts_controller_add(contacts_controller_t *controller, const char *name,
 	bepio_mutex_lock(contacts_lock);
 	ret = controller->active ? contacts_model_add(controller->model, name, phone, id) : -EACCES;
 	if (ret == 0) {
-		controller->view->page = CONTACTS_PAGE_DETAIL;
-		controller->view->selected_id = *id;
-		contacts_view_render(controller->view, controller->model);
+		controller->model->flow.page = CONTACTS_PAGE_DETAIL;
+		controller->model->flow.selected_id = *id;
+		show_page(controller);
 	}
 	bepio_mutex_unlock(contacts_lock);
 	return ret;
@@ -180,9 +198,9 @@ int contacts_controller_update(contacts_controller_t *controller, uint32_t id,
 	bepio_mutex_lock(contacts_lock);
 	ret = controller->active ? contacts_model_update(controller->model, id, name, phone) : -EACCES;
 	if (ret == 0) {
-		controller->view->page = CONTACTS_PAGE_DETAIL;
-		controller->view->selected_id = id;
-		contacts_view_render(controller->view, controller->model);
+		controller->model->flow.page = CONTACTS_PAGE_DETAIL;
+		controller->model->flow.selected_id = id;
+		show_page(controller);
 	}
 	bepio_mutex_unlock(contacts_lock);
 	return ret;
@@ -195,11 +213,11 @@ int contacts_controller_delete(contacts_controller_t *controller, uint32_t id)
 	bepio_mutex_lock(contacts_lock);
 	ret = controller->active ? contacts_model_delete(controller->model, id) : -EACCES;
 	if (ret == 0) {
-		if (controller->view->selected_id == id) {
-			controller->view->page = CONTACTS_PAGE_LIST;
-			controller->view->selected_id = 0;
+		if (controller->model->flow.selected_id == id) {
+			controller->model->flow.page = CONTACTS_PAGE_LIST;
+			controller->model->flow.selected_id = 0;
 		}
-		contacts_view_render(controller->view, controller->model);
+		show_page(controller);
 	}
 	bepio_mutex_unlock(contacts_lock);
 	return ret;
@@ -211,16 +229,15 @@ int contacts_controller_edit(contacts_controller_t *controller, uint32_t id)
 	bepio_mutex_lock(contacts_lock);
 	if (!controller->active) { ret = -EACCES; }
 	else {
-		contacts_view_t *view = controller->view;
 		contacts_entry_t draft = {0};
 		ret = id ? contacts_model_get(controller->model, id, &draft) : 0;
 		if (!ret) {
-			view->draft = draft;
-			view->edit_return = id ? CONTACTS_PAGE_DETAIL : CONTACTS_PAGE_LIST;
-			view->selected_id = id;
-			view->dirty = false;
-			view->page = CONTACTS_PAGE_EDIT;
-			contacts_view_render(view, controller->model);
+			controller->model->flow.draft = draft;
+			controller->model->flow.edit_return = id ? CONTACTS_PAGE_DETAIL : CONTACTS_PAGE_LIST;
+			controller->model->flow.selected_id = id;
+			controller->model->flow.dirty = false;
+			controller->model->flow.page = CONTACTS_PAGE_EDIT;
+			show_page(controller);
 		}
 	}
 	bepio_mutex_unlock(contacts_lock);
@@ -234,15 +251,14 @@ int contacts_controller_draft(contacts_controller_t *controller, const char *nam
 	}
 	int ret = 0;
 	bepio_mutex_lock(contacts_lock);
-	if (!controller->active || controller->view->page != CONTACTS_PAGE_EDIT) { ret = -EACCES; }
+	if (!controller->active || controller->model->flow.page != CONTACTS_PAGE_EDIT) { ret = -EACCES; }
 	else {
-		contacts_view_t *view = controller->view;
 		contacts_entry_t original = {0};
-		if (view->draft.id) { ret = contacts_model_get(controller->model, view->draft.id, &original); }
+		if (controller->model->flow.draft.id) { ret = contacts_model_get(controller->model, controller->model->flow.draft.id, &original); }
 		if (!ret) {
-			strcpy(view->draft.name, name);
-			strcpy(view->draft.phone, phone);
-			view->dirty = strcmp(name, original.name) || strcmp(phone, original.phone);
+			strcpy(controller->model->flow.draft.name, name);
+			strcpy(controller->model->flow.draft.phone, phone);
+			controller->model->flow.dirty = strcmp(name, original.name) || strcmp(phone, original.phone);
 		}
 	}
 	bepio_mutex_unlock(contacts_lock);
@@ -253,17 +269,16 @@ int contacts_controller_save(contacts_controller_t *controller)
 {
 	int ret = 0;
 	bepio_mutex_lock(contacts_lock);
-	if (!controller->active || controller->view->page != CONTACTS_PAGE_EDIT) { ret = -EACCES; }
+	if (!controller->active || controller->model->flow.page != CONTACTS_PAGE_EDIT) { ret = -EACCES; }
 	else {
-		contacts_view_t *view = controller->view;
-		uint32_t id = view->draft.id;
-		ret = id ? contacts_model_update(controller->model, id, view->draft.name, view->draft.phone) :
-			contacts_model_add(controller->model, view->draft.name, view->draft.phone, &id);
+		uint32_t id = controller->model->flow.draft.id;
+		ret = id ? contacts_model_update(controller->model, id, controller->model->flow.draft.name, controller->model->flow.draft.phone) :
+			contacts_model_add(controller->model, controller->model->flow.draft.name, controller->model->flow.draft.phone, &id);
 		if (!ret) {
-			view->selected_id = id;
-			view->page = CONTACTS_PAGE_DETAIL;
-			view->dirty = false;
-			contacts_view_render(view, controller->model);
+			controller->model->flow.selected_id = id;
+			controller->model->flow.page = CONTACTS_PAGE_DETAIL;
+			controller->model->flow.dirty = false;
+			show_page(controller);
 		}
 	}
 	bepio_mutex_unlock(contacts_lock);
@@ -274,12 +289,12 @@ int contacts_controller_discard(contacts_controller_t *controller)
 {
 	int ret = 0;
 	bepio_mutex_lock(contacts_lock);
-	if (!controller->active || controller->view->page != CONTACTS_PAGE_DISCARD_CONFIRM) { ret = -EACCES; }
+	if (!controller->active || controller->model->flow.page != CONTACTS_PAGE_DISCARD_CONFIRM) { ret = -EACCES; }
 	else {
-		controller->view->page = controller->view->edit_return;
-		controller->view->dirty = false;
-		memset(&controller->view->draft, 0, sizeof(controller->view->draft));
-		contacts_view_render(controller->view, controller->model);
+		controller->model->flow.page = controller->model->flow.edit_return;
+		controller->model->flow.dirty = false;
+		memset(&controller->model->flow.draft, 0, sizeof(controller->model->flow.draft));
+		show_page(controller);
 	}
 	bepio_mutex_unlock(contacts_lock);
 	return ret;
@@ -289,10 +304,10 @@ int contacts_controller_request_delete(contacts_controller_t *controller)
 {
 	int ret = 0;
 	bepio_mutex_lock(contacts_lock);
-	if (!controller->active || controller->view->page != CONTACTS_PAGE_DETAIL) { ret = -EACCES; }
+	if (!controller->active || controller->model->flow.page != CONTACTS_PAGE_DETAIL) { ret = -EACCES; }
 	else {
-		controller->view->page = CONTACTS_PAGE_DELETE_CONFIRM;
-		contacts_view_render(controller->view, controller->model);
+		controller->model->flow.page = CONTACTS_PAGE_DELETE_CONFIRM;
+		show_page(controller);
 	}
 	bepio_mutex_unlock(contacts_lock);
 	return ret;
@@ -302,13 +317,13 @@ int contacts_controller_confirm_delete(contacts_controller_t *controller)
 {
 	int ret = 0;
 	bepio_mutex_lock(contacts_lock);
-	if (!controller->active || controller->view->page != CONTACTS_PAGE_DELETE_CONFIRM) { ret = -EACCES; }
+	if (!controller->active || controller->model->flow.page != CONTACTS_PAGE_DELETE_CONFIRM) { ret = -EACCES; }
 	else {
-		ret = contacts_model_delete(controller->model, controller->view->selected_id);
+		ret = contacts_model_delete(controller->model, controller->model->flow.selected_id);
 		if (!ret) {
-			controller->view->page = CONTACTS_PAGE_LIST;
-			controller->view->selected_id = 0;
-			contacts_view_render(controller->view, controller->model);
+			controller->model->flow.page = CONTACTS_PAGE_LIST;
+			controller->model->flow.selected_id = 0;
+			show_page(controller);
 		}
 	}
 	bepio_mutex_unlock(contacts_lock);
@@ -320,8 +335,8 @@ int contacts_controller_search(contacts_controller_t *controller, const char *qu
 	if (!query || strlen(query) > CONTACTS_NAME_MAX) { return -EINVAL; }
 	int ret = 0;
 	bepio_mutex_lock(contacts_lock);
-	if (!controller->active || controller->view->page != CONTACTS_PAGE_LIST) { ret = -EACCES; }
-	else { strcpy(controller->view->search, query); }
+	if (!controller->active || controller->model->flow.page != CONTACTS_PAGE_LIST) { ret = -EACCES; }
+	else { strcpy(controller->model->flow.search, query); }
 	/* GUI refreshes list only; leave the focused text area and keyboard intact. */
 	bepio_mutex_unlock(contacts_lock);
 	return ret;

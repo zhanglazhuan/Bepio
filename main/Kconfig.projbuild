@@ -1,5 +1,12 @@
 menu "Bepio"
 
+config BEPIO_PRODUCTION_BUILD
+	bool "Production firmware profile (requires release gate)"
+	default n
+	help
+	  Disables demonstration content. Production builds must also pass the
+	  release gate for signed boot, encrypted Flash, rollback and OTA slots.
+
 config BEPIO_UI_OPTIMIZE
 	bool "Optimize graphics components for responsiveness (-O2)"
 	default y
@@ -69,11 +76,11 @@ config BEPIO_MESSAGES_SHELL
 
 config BEPIO_MESSAGES_DEMO
 	bool "Seed simulated Messages conversations"
-	depends on BEPIO_APP_MESSAGES
+	depends on BEPIO_APP_MESSAGES && !BEPIO_PRODUCTION_BUILD
 	default y
 
-config BEPIO_APP_CHAT
-	bool "Chat application"
+config BEPIO_APP_CHATS
+	bool "Chats application"
 	depends on BEPIO_APP_CONTACTS && BEPIO_APP_MESSAGES
 	default y
 

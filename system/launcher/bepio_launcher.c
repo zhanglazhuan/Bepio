@@ -3,18 +3,16 @@
  */
 #include <string.h>
 #include <stdio.h>
-#include "apps/contacts/model.h"
+#include "apps/contacts/app.h"
 #include "bepio_launcher.h"
 #include "bepio_app_manager.h"
 #include "esp_log.h"
 #include "lvgl.h"
 #include "lv_page.h"
-#include "bepio_navigation.h"
 #include "apps/messages/navigation.h"
 #include "system/uilv/imgs/icon_40x40/bepio_icons.h"
 
 static const char *TAG = "launcher";
-static lv_obj_t *screen;
 
 static lv_obj_t *label(lv_obj_t *parent, const char *text, uint32_t color)
 {
@@ -26,13 +24,12 @@ static lv_obj_t *label(lv_obj_t *parent, const char *text, uint32_t color)
 
 static void load_screen(lv_obj_t *next)
 {
-	lv_obj_t *old = screen;
-	screen = next;
-	lv_screen_load(screen);
-	if (old) { lv_obj_delete_async(old); }
+	lv_obj_t *old = lv_screen_active();
+	lv_screen_load(next);
+	if (old && old != next) { lv_obj_delete_async(old); }
 }
 
-static void force_home(void)
+void bepio_launcher_return_home(void)
 {
 	int ret = bepio_app_manager_delete();
 	if (ret) { ESP_LOGW(TAG, "Cannot exit app: %d", ret); return; }
@@ -48,9 +45,9 @@ static void back(lv_event_t *event)
 
 static int open_named_app(const char *name)
 {
-	bepio_page_t page = bepio_page_create(name, true, back, NULL);
+	Page page = lv_page_create(name, true, back, NULL);
+	lv_obj_set_layout(page.container, LV_LAYOUT_NONE);
 	load_screen(page.screen);
-	bepio_navigation_set_exit_handler(force_home, name);
 	int ret = bepio_app_manager_show(bepio_launcher_home, page.container, NULL, name);
 	if (ret) { bepio_launcher_home(); }
 	return ret;
@@ -74,13 +71,10 @@ static void open_app(lv_event_t *event)
 
 void bepio_launcher_home(void)
 {
-	bepio_page_set_message_handler(compose_message);
-	bepio_navigation_set_exit_handler(NULL, NULL);
-	bepio_page_t page = bepio_page_create(NULL, false, NULL, NULL);
+	contacts_controller_set_compose_handler(contacts_app_get_controller(), compose_message);
+	Page page = lv_page_create(NULL, false, NULL, NULL);
 	lv_obj_add_flag(page.header, LV_OBJ_FLAG_HIDDEN);
-	lv_obj_set_y(page.container, BEPIO_STATUS_BAR_HEIGHT);
-	lv_obj_set_height(page.container, lv_display_get_vertical_resolution(NULL) -
-		BEPIO_STATUS_BAR_HEIGHT - BEPIO_PAGE_BOTTOM_HEIGHT);
+	lv_obj_set_layout(page.container, LV_LAYOUT_NONE);
 	load_screen(page.screen);
 	lv_obj_set_style_pad_all(page.container, 0, 0);
 	int count = bepio_app_manager_get_num_apps(), visible = 0;
@@ -92,7 +86,7 @@ void bepio_launcher_home(void)
 		if (!strcmp(app->name, "Settings")) { icon = &ic_settings; }
 		if (!strcmp(app->name, "Contacts")) { icon = &ic_contacts; }
 		if (!strcmp(app->name, "Messages")) { icon = &ic_mail; }
-		if (!strcmp(app->name, "Chat")) { icon = &ic_voice_chat; }
+		if (!strcmp(app->name, "Chats")) { icon = &ic_voice_chat; }
 		lv_obj_t *button = lv_button_create(page.container);
 		lv_obj_set_size(button, 84, 62);
 		lv_obj_set_pos(button, 12 + (visible % 3) * 102, 12 + (visible / 3) * 96);

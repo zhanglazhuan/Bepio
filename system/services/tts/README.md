@@ -7,7 +7,7 @@
 ## 接入
 
 独立验证见 [`debug/t_tts`](../../../debug/t_tts/README.md)。
-主工程 Messages 点击中文语音条时由后台音频线程实时合成并通过 ES8311 播放，不保存 PCM。音色使用独立 3 MiB 分区，完整 `flash` 会一并写入。实际发声、内存余量与连续播放仍待实板验证。
+主工程 Messages 点击中文语音条时由后台音频线程实时合成并通过 ES8311 播放，不保存 PCM。音色使用独立 3 MiB 分区，默认 `flash` 暂不写入模型，保留 Flash 中已有音色。实际发声、内存余量与连续播放仍待实板验证。
 
 ```c
 ESP_ERROR_CHECK(bepio_tts_init());
@@ -27,7 +27,7 @@ esp_err_t result = bepio_tts_speak(message_text, 3, &output, NULL);
 ## 资源与错误
 
 语音数据映射 Flash，不先复制整个音色到 RAM。启动校验模型 SHA-256，
-拒绝缺失、未烧录或损坏的数据。CMake 自动将对应版本的语音数据加入常规 flash 目标。
+拒绝缺失、未烧录或损坏的数据。需要烧录模型时，先执行 `idf.py -DBEPIO_FLASH_TTS_MODEL=ON reconfigure`，再执行 `idf.py flash`；完成后用 `idf.py -DBEPIO_FLASH_TTS_MODEL=OFF reconfigure` 恢复跳过。
 `voice_data` 虽使用 FAT subtype，但存放原始 `.dat`，不能作为 FATFS 挂载或格式化。
 
 输入上限 256 字节，检查完整 UTF-8、空白输入和控制字符；这与当前消息正文上限相同。

@@ -4,9 +4,10 @@
 #include <stdbool.h>
 #include "model.h"
 #include "bepio_wifi.h"
+#include "page_navigator.h"
 
 typedef enum {
-	SETTINGS_PAGE_HOME,
+	SETTINGS_PAGE_HOME = 1,
 	SETTINGS_PAGE_ABOUT,
 	SETTINGS_PAGE_ID,
 	SETTINGS_PAGE_DATETIME,
@@ -18,16 +19,17 @@ typedef enum {
 	SETTINGS_PAGE_STORAGE,
 } settings_page_t;
 
+typedef struct settings_page_context settings_page_context_t;
 typedef struct {
-	settings_page_t page;
-	bepio_wifi_ap_t wifi_ap;
 	bool available;
 	void *root;
 	void *group;
+	const settings_model_t *model;
+	page_navigator_t page_nav;
+	page_navigator_page_t page_registry[10];
 } settings_view_t;
 
 void settings_view_init(settings_view_t *view, void *root, void *group);
 void settings_view_deinit(settings_view_t *view);
-void settings_view_render(const settings_view_t *view, const settings_model_t *model);
 
 #endif

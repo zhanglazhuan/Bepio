@@ -23,7 +23,7 @@ COM5 替换成实际原生 USB 端口。使用开发板的 USB 接口（GPIO19/2
 日志和命令行不走 UART0 COM 桥。连接模块 5V、GND 与扬声器，IO 电平为 3.3V。
 本工程烧录会替换当前应用和分区表；恢复主工程时重新烧录主工程。
 
-**首次必须执行 `flash`，不要只执行 `app-flash`。** CMake 已将语音数据加入烧录列表：
+**当前默认跳过语音模型烧录。** 常规 `flash` 仅写入 bootloader、分区表和应用，保留已有模型。首次使用或需要更新音色时，先执行 `idf.py -C debug/t_tts -B debug/t_tts/build -DBEPIO_FLASH_TTS_MODEL=ON reconfigure`，再执行上述 `flash monitor`；完成后以 `-DBEPIO_FLASH_TTS_MODEL=OFF reconfigure` 恢复跳过。分区布局如下：
 
 | 内容 | 地址 | 空间 |
 |---|---|---|
@@ -32,8 +32,8 @@ COM5 替换成实际原生 USB 端口。使用开发板的 USB 接口（GPIO19/2
 | t_tts 应用 | 0x10000 | 2 MiB |
 | voice_data 原始语音数据 | 0x210000 | 3 MiB |
 
-语音文件由 Component Manager 下载的 `esp-sr` 提供，无需手动拷贝或烧录模型。
-启动检查 SHA-256；若报告不匹配，重新执行完整 `flash`。
+语音文件由 Component Manager 下载的 `esp-sr` 提供，无需手动拷贝；烧录由上述开关控制。
+启动检查 SHA-256；若报告不匹配，开启模型烧录开关后重新执行 `flash`。
 
 启动自动初始化，但不自动发声。等待 `Done`，在 `tts>` 控制台运行：
 

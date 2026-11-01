@@ -134,6 +134,11 @@ int main(void)
 	scan_error = 0;
 	store_error = -EIO; assert(bepio_wifi_connect(&home, "correctpass") == 0); pump();
 	bepio_wifi_snapshot(&snapshot); assert(snapshot.connected && snapshot.storage_error == -EIO);
+	bepio_wifi_ap_t guest = snapshot.aps[1];
+	assert(!strcmp(guest.ssid, "Guest") && !guest.saved);
+	assert(bepio_wifi_connect(&guest, "") == 0); pump();
+	bepio_wifi_snapshot(&snapshot);
+	assert(snapshot.connected && snapshot.storage_error == -EIO && !snapshot.aps[1].saved);
 	ip_handler(NULL, IP_EVENT, IP_EVENT_STA_LOST_IP, NULL);
 	bepio_wifi_snapshot(&snapshot); assert(!snapshot.connected && !snapshot.ip[0]);
 	ip_event_got_ip_t renewed = {0}; ip_handler(NULL, IP_EVENT, IP_EVENT_STA_GOT_IP, &renewed);
