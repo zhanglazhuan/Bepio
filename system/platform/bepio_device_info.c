@@ -14,7 +14,7 @@ void bepio_device_info(char *buffer, size_t size)
 	esp_efuse_mac_get_default(mac);
 	uint32_t flash = 0;
 	esp_flash_get_size(NULL, &flash);
-	snprintf(buffer, size, "%s  v%s\nESP32-S3 rev %u / %u cores\nFlash: %lu MB  Free heap: %lu KB\nIDF: %s\nMAC: %02X:%02X:%02X:%02X:%02X:%02X\nBuilt: %s %s",
+	snprintf(buffer, size, "Firmware: %s v%s\nChip: ESP32-S3 rev %u / %u cores\nFlash: %lu MB  Free heap: %lu KB\nIDF: %s\nMAC: %02X:%02X:%02X:%02X:%02X:%02X\nBuilt: %s %s",
 		app->project_name, app->version, chip.revision, chip.cores,
 		(unsigned long)(flash / (1024 * 1024)), (unsigned long)(esp_get_free_heap_size() / 1024),
 		app->idf_ver, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5], app->date, app->time);

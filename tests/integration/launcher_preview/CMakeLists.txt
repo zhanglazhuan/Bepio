@@ -11,7 +11,8 @@ target_sources(launcher_preview PRIVATE "${BEPIO_ROOT}/system/uilv/imgs/icon_40x
 target_sources(launcher_preview PRIVATE
     "${BEPIO_ROOT}/system/uilv/imgs/icon_40x40/ic_mail.c"
     "${BEPIO_ROOT}/system/uilv/imgs/icon_40x40/ic_settings.c"
-    "${BEPIO_ROOT}/system/uilv/imgs/icon_40x40/ic_voice_chat.c")
+    "${BEPIO_ROOT}/system/uilv/imgs/icon_40x40/ic_voice_chat.c"
+    "${BEPIO_ROOT}/system/uilv/imgs/icon_40x40/ic_notifications.c")
 target_include_directories(launcher_preview PRIVATE host "${BEPIO_ROOT}" "${BEPIO_ROOT}/system/launcher" "${BEPIO_ROOT}/system/appmgr")
 target_link_libraries(launcher_preview PRIVATE lvgl m)
 
@@ -103,6 +104,7 @@ add_executable(settings_preview settings_main.c
     "${BEPIO_ROOT}/apps/settings/pages/settings_battery.c"
     "${BEPIO_ROOT}/apps/settings/pages/settings_updates.c"
     "${BEPIO_ROOT}/apps/settings/pages/settings_about.c"
+    "${BEPIO_ROOT}/apps/settings/about_info.c"
     "${BEPIO_ROOT}/apps/settings/pages/settings_wifi.c"
     "${BEPIO_ROOT}/apps/settings/pages/settings_wifi_connect.c"
     "${BEPIO_ROOT}/apps/settings/pages/settings_usage.c"
@@ -133,3 +135,20 @@ target_compile_options(floating_button_preview PRIVATE -Wall -Wextra -Werror -UN
 target_link_libraries(floating_button_preview PRIVATE lvgl m)
 
 add_test(NAME floating_button COMMAND floating_button_preview "${CMAKE_CURRENT_BINARY_DIR}")
+
+add_executable(notifications_preview notifications_main.c
+    "${BEPIO_ROOT}/apps/notifications/app.c" "${BEPIO_ROOT}/apps/notifications/model.c"
+    "${BEPIO_ROOT}/apps/notifications/controller.c" "${BEPIO_ROOT}/apps/notifications/view.c"
+    "${BEPIO_ROOT}/system/appmgr/bepio_app_manager.c"
+    "${BEPIO_ROOT}/system/uilv/widgets/lv_page.c"
+    "${BEPIO_ROOT}/system/uilv/widgets/lv_controls.c"
+    "${BEPIO_ROOT}/system/uilv/widgets/lv_status_bar.c"
+    "${BEPIO_ROOT}/system/uilv/imgs/icon_40x40/ic_notifications.c")
+target_include_directories(notifications_preview PRIVATE
+    "${CMAKE_CURRENT_LIST_DIR}/host" "${BEPIO_ROOT}/tests/unittest/app_manager/host"
+    "${BEPIO_ROOT}" "${BEPIO_ROOT}/system/appmgr" "${BEPIO_ROOT}/system/uilv/widgets")
+target_compile_definitions(notifications_preview PRIVATE CONFIG_BEPIO_MAX_APPS=8)
+target_compile_options(notifications_preview PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+target_link_libraries(notifications_preview PRIVATE lvgl m)
+
+target_include_directories(launcher_preview PRIVATE "${BEPIO_ROOT}/system/uilv/framework")

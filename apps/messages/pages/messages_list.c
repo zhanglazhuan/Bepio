@@ -4,6 +4,36 @@
 #include <stdio.h>
 #include <string.h>
 
+typedef struct {
+	messages_page_context_t base;
+	bepio_messaging_stats_t shown;
+	lv_timer_t *refresh;
+} list_context_t;
+
+static void stop_refresh(lv_event_t *event)
+{
+	list_context_t *ctx = lv_event_get_user_data(event);
+	if (ctx->refresh) {
+		lv_timer_delete(ctx->refresh);
+		ctx->refresh = NULL;
+	}
+}
+
+static void refresh_if_changed(lv_timer_t *timer)
+{
+	list_context_t *ctx = lv_timer_get_user_data(timer);
+	messages_view_t *view = ctx->base.view;
+	if (!view->available || view->page_nav.nav_ctx != ctx ||
+	    lv_obj_get_screen(ctx->base.root) != lv_screen_active()) return;
+	bepio_messaging_stats_t current;
+	bepio_messaging_stats(&current);
+	if (current.inbox == ctx->shown.inbox && current.outbox == ctx->shown.outbox &&
+	    current.unread == ctx->shown.unread && current.queued == ctx->shown.queued) return;
+	lv_timer_pause(timer);
+	page_navigator_navigate_to(&view->page_nav, view,
+		ctx->base.controller->model->flow.page + 1, NULL);
+}
+
 static void open_message(lv_event_t *event)
 {
 	messages_page_context_t *ctx = lv_event_get_user_data(event);
@@ -25,7 +55,8 @@ lv_obj_t *messages_list_build(void *app, void *payload)
 		controller->model->flow.page == MESSAGES_PAGE_BOX,
 		messages_page_back, view);
 	if (!page.screen || !page.container) { return NULL; }
-	messages_page_context_t *ctx = messages_page_alloc(sizeof(*ctx), view);
+	list_context_t *list = (list_context_t *)messages_page_alloc(sizeof(*list), view);
+	messages_page_context_t *ctx = list ? &list->base : NULL;
 	if (!ctx) { return messages_page_finish(view, page, NULL); }
 	messages_page_prepare(ctx, page, "Messages");
 	lv_obj_t *root = ctx->root;
@@ -62,9 +93,11 @@ lv_obj_t *messages_list_build(void *app, void *payload)
 		lv_obj_remove_event_cb(card, messages_page_action);
 		lv_obj_set_user_data(card, (void *)(uintptr_t)message.id);
 		lv_obj_add_event_cb(card, open_message, LV_EVENT_CLICKED, ctx);
+		char name[BEPIO_MESSAGE_NAME_MAX + 1];
+		messages_model_contact_name(&message, controller->model->flow.box, name, sizeof(name));
 		snprintf(line, sizeof(line), "%s%s",
 			controller->model->flow.box == BEPIO_MESSAGE_INBOX && !message.read ? "* " : "",
-			message.payload.name[0] ? message.payload.name : message.payload.phone);
+			name);
 		messages_page_text(card, line, 0xe9eff8);
 		lv_obj_t *body = messages_page_text(card,
 			messages_page_has_chinese(message.payload.body) ? LV_SYMBOL_PLAY " Voice message" :
@@ -75,5 +108,8 @@ lv_obj_t *messages_list_build(void *app, void *payload)
 		matches++;
 	}
 	if (!matches) { messages_page_text(root, "No messages yet", 0xa8bad2); }
+	bepio_messaging_stats(&list->shown);
+	list->refresh = lv_timer_create(refresh_if_changed, 1000, list);
+	lv_obj_add_event_cb(page.screen, stop_refresh, LV_EVENT_DELETE, list);
 	return messages_page_finish(view, page, ctx);
 }

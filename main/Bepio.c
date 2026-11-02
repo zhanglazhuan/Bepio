@@ -31,12 +31,24 @@
 #ifdef CONFIG_BEPIO_APP_CHATS
 #include "apps/chats/app.h"
 #endif
+#ifdef CONFIG_BEPIO_APP_NOTIFICATIONS
+#include "apps/notifications/app.h"
+#ifdef CONFIG_BEPIO_NOTIFICATIONS_DEMO
+#include "apps/notifications/demo.h"
+#endif
+#endif
 BEPIO_LOG_TAG(bepio);
 
 void app_main(void)
 {
 	BEPIO_LOGI("Bepio starting on ESP-IDF");
 	ESP_ERROR_CHECK(bepio_account_init());
+#ifdef CONFIG_BEPIO_APP_NOTIFICATIONS
+	bepio_notifications_init();
+#ifdef CONFIG_BEPIO_NOTIFICATIONS_DEMO
+	BEPIO_LOGI("Notification demo fixtures: %u", bepio_notifications_demo_seed());
+#endif
+#endif
 #ifdef CONFIG_BEPIO_APP_MESSAGES
 	ESP_ERROR_CHECK(bepio_messaging_init());
 #ifdef CONFIG_BEPIO_MESSAGES_DEMO
@@ -57,6 +69,9 @@ void app_main(void)
 #endif
 #ifdef CONFIG_BEPIO_APP_CHATS
 	ESP_ERROR_CHECK(bepio_chats_register());
+#endif
+#ifdef CONFIG_BEPIO_APP_NOTIFICATIONS
+	ESP_ERROR_CHECK(bepio_notifications_register());
 #endif
 #ifdef CONFIG_BEPIO_APP_SETTINGS
 	ESP_ERROR_CHECK(bepio_settings_register());

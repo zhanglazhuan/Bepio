@@ -11,7 +11,7 @@ static size_t tx_bytes, rx_bytes;
 static int64_t now;
 static unsigned char packet[2];
 
-int bepio_pager_message_now(struct bepio_pager_message *message)
+int bepio_pager_message_stamp_new(struct bepio_pager_message *message)
 {
 	strcpy(message->datetime, "2026-11-01T00:00:00Z");
 	return 0;
@@ -20,6 +20,8 @@ int bepio_pager_message_encode(const struct bepio_pager_message *message, char *
 {
 	assert(!strcmp(message->from, "100000000000001"));
 	if (mode == NUMBER) assert(!strcmp(message->to, "13800138000"));
+	assert(!strcmp(message->datetime, "2026-10-30T00:00:00Z"));
+	assert(!strcmp(message->id, "11111111-2222-4333-8444-555555555555"));
 	assert(capacity > 5);
 	strcpy(json, "test");
 	return 0;
@@ -36,6 +38,8 @@ static int take(struct bepio_pager_message *message)
 {
 	if (takes++ || mode == RX_FAIL || mode == RX_FULL || mode == PING_TIMEOUT) return 0;
 	memset(message, 0, sizeof(*message));
+	strcpy(message->datetime, "2026-10-30T00:00:00Z");
+	strcpy(message->id, "11111111-2222-4333-8444-555555555555");
 	strcpy(message->from, "100000000000001");
 	strcpy(message->to, mode == INVALID_TO ? "123/456" : mode == NUMBER ?
 		"13800138000" : "100000000000002");

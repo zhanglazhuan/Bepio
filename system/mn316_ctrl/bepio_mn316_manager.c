@@ -9,8 +9,14 @@
 #include <string.h>
 #if defined(CONFIG_BEPIO_APP_MESSAGES)
 #include "messaging.h"
+#ifdef CONFIG_BEPIO_APP_NOTIFICATIONS
+#include "apps/notifications/app.h"
+#endif
 #include "bepio_account.h"
 #include "../../modules/pager_id.h"
+#ifdef CONFIG_BEPIO_APP_CONTACTS
+#include "apps/contacts/app.h"
+#endif
 #endif
 
 #if __has_include("emqx_local.h")
@@ -25,30 +31,30 @@
 
 
 static const char *TAG __attribute__((unused)) = "mn316_manager";
-static char candidate_device_id[33];
 
-static int load_device_id(void)
+static int load_device_id(char *out, size_t capacity)
 {
+	if (!out || capacity < 33) return -EINVAL;
 #if defined(CONFIG_BEPIO_APP_MESSAGES)
 	bepio_account_snapshot_t account;
 	bepio_account_snapshot(&account);
 	if (!bepio_pager_id_valid(account.id, BEPIO_MESSAGE_PHONE_MAX)) return -EINVAL;
-	strcpy(candidate_device_id, account.id);
+	strcpy(out, account.id);
 #else
 	uint8_t mac[6];
 	if (esp_efuse_mac_get_default(mac) != ESP_OK) return -EIO;
 	uint64_t number = 0;
 	for (size_t i = 0; i < sizeof(mac); i++) number = (number << 8) | mac[i];
-	snprintf(candidate_device_id, sizeof(candidate_device_id), "%llu", (unsigned long long)number);
+	snprintf(out, capacity, "%llu", (unsigned long long)number);
 #endif
 	return 0;
 }
 
-static bepio_mn316_tls_credentials_t default_credentials(void)
+static bepio_mn316_tls_credentials_t default_credentials(const char *device_id)
 {
 	const bepio_mn316_tls_credentials_t credentials = {
 		.username = BEPIO_EMQX_USERNAME, .password = BEPIO_EMQX_PASSWORD,
-		.device_id = candidate_device_id,
+		.device_id = device_id,
 	};
 	return credentials;
 }
@@ -56,7 +62,7 @@ static bepio_mn316_tls_credentials_t default_credentials(void)
 #if defined(CONFIG_BEPIO_APP_MESSAGES)
 #include <stdio.h>
 #include <time.h>
-#include "mbedtls/sha256.h"
+
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
@@ -77,6 +83,14 @@ static int emqx_take(struct bepio_pager_message *message)
 	strcpy(message->from, emqx_device_id);
 	strcpy(message->to, sending.payload.phone);
 	strcpy(message->text, sending.payload.body);
+	strcpy(message->id, sending.remote_id);
+	time_t created = (time_t)(sending.timestamp_ms / 1000);
+	struct tm utc;
+	if (!gmtime_r(&created, &utc) || utc.tm_year < 124 ||
+	    !strftime(message->datetime, sizeof(message->datetime), "%Y-%m-%dT%H:%M:%SZ", &utc)) {
+		(void)bepio_messaging_complete(sending.id, sending.attempt, false, false);
+		return -EIO;
+	}
 	return 1;
 }
 
@@ -89,20 +103,36 @@ static void emqx_complete(bool acknowledged)
 
 static int emqx_receive(const struct bepio_pager_message *message)
 {
+	if (message->is_notification) {
+#ifdef CONFIG_BEPIO_APP_NOTIFICATIONS
+		bepio_notification_payload_t payload = {0};
+		strcpy(payload.id, message->id);
+		strcpy(payload.from, message->from);
+		strcpy(payload.app, message->app);
+		strcpy(payload.title, message->title);
+		strcpy(payload.text, message->text);
+		strcpy(payload.datetime, message->datetime);
+		int ret = bepio_notifications_receive(&payload);
+		ESP_LOGI(TAG, "EMQX notification from %s app=%s: %d", message->from, message->app, ret);
+		return ret;
+#else
+		return 0;
+#endif
+	}
+
 	if (strlen(message->from) > BEPIO_MESSAGE_PHONE_MAX ||
 	    strlen(message->text) > BEPIO_MESSAGE_BODY_MAX) return 0;
 	bepio_message_payload_t payload = {0};
 	strcpy(payload.phone, message->from);
-	strcpy(payload.name, message->from);
+	strcpy(payload.name, "*");
+#ifdef CONFIG_BEPIO_APP_CONTACTS
+	contacts_entry_t contact;
+	if (!contacts_controller_lookup_phone(contacts_app_get_controller(), message->from,
+		&contact)) strcpy(payload.name, contact.name);
+#endif
 	strcpy(payload.body, message->text);
-	/* Legacy wire format has no message ID. Hash canonical JSON for dedup. */
-	char json[BEPIO_PAGER_WIRE_MAX], remote_id[41];
-	unsigned char digest[32];
-	if (bepio_pager_message_encode(message, json, sizeof(json)) ||
-	    mbedtls_sha256((const unsigned char *)json, strlen(json), digest, 0)) return -EIO;
-	for (size_t i = 0; i < 20; i++) snprintf(remote_id + i * 2, 3, "%02x", digest[i]);
 	uint32_t id;
-	int ret = bepio_messaging_receive(remote_id, &payload, (int64_t)time(NULL) * 1000, false, &id);
+	int ret = bepio_messaging_receive(message->id, &payload, (int64_t)time(NULL) * 1000, false, &id);
 	ESP_LOGI(TAG, "EMQX inbox from %s: %d", message->from, ret);
 	return ret == -EALREADY || ret == -EINVAL ? 0 : ret;
 }
@@ -172,9 +202,10 @@ static int start_worker(const bepio_mn316_tls_credentials_t *credentials)
 int bepio_mn316_manager_emqx_start(void)
 {
 #if defined(CONFIG_BEPIO_APP_MESSAGES)
-	int ret = load_device_id();
+	char device_id[33];
+	int ret = load_device_id(device_id, sizeof(device_id));
 	if (ret) return ret;
-	const bepio_mn316_tls_credentials_t credentials = default_credentials();
+	const bepio_mn316_tls_credentials_t credentials = default_credentials(device_id);
 	return start_worker(&credentials);
 #else
 	return -ENOTSUP;
@@ -188,10 +219,7 @@ int bepio_mn316_manager_init(void)
 
 int bepio_mn316_manager_device_id(char *out, size_t capacity)
 {
-	if (!out || capacity < sizeof(candidate_device_id)) return -EINVAL;
-	int ret = load_device_id();
-	if (!ret) strcpy(out, candidate_device_id);
-	return ret;
+	return load_device_id(out, capacity);
 }
 
 int bepio_mn316_manager_at(const char *command, char *reply, size_t capacity, int timeout_ms)
@@ -211,9 +239,10 @@ int bepio_mn316_manager_tls_test(const bepio_mn316_tls_credentials_t *credential
 
 int bepio_mn316_manager_test(int listen_seconds, const char *text)
 {
-	int identity_ret = load_device_id();
+	char device_id[33];
+	int identity_ret = load_device_id(device_id, sizeof(device_id));
 	if (identity_ret) return identity_ret;
-	bepio_mn316_tls_credentials_t credentials = default_credentials();
+	bepio_mn316_tls_credentials_t credentials = default_credentials(device_id);
 	credentials.test_text = text;
 	if (!credentials.username[0] || !credentials.password[0]) return -EACCES;
 	int ret = bepio_mn316_driver_network_wait(120000);

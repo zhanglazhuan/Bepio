@@ -39,7 +39,7 @@ typedef struct {
 	bool read;
 	bool simulated;
 	int64_t timestamp_ms; /* Epoch time supplied by transport; 0 = unsynchronized. */
-	char remote_id[BEPIO_MESSAGE_REMOTE_ID_MAX + 1]; /* Inbox only, for dedup. */
+	char remote_id[BEPIO_MESSAGE_REMOTE_ID_MAX + 1]; /* Wire message ID; inbox dedup also includes the sender. */
 	bepio_message_payload_t payload;
 } bepio_message_t;
 

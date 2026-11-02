@@ -160,7 +160,7 @@ static int mqtt_test(const bepio_mn316_stream_t *stream, const bepio_mn316_tls_c
 	strcpy(message.from, credentials->device_id);
 	strcpy(message.to, BEPIO_MN316_TEST_PEER);
 	strcpy(message.text, credentials->test_text ? credentials->test_text : "MN316 TLS test message");
-	if (bepio_pager_message_now(&message) || bepio_pager_message_encode(&message, json, sizeof(json)) ||
+	if (bepio_pager_message_stamp_new(&message) || bepio_pager_message_encode(&message, json, sizeof(json)) ||
 	    publish(m, BEPIO_MN316_TEST_INBOX, (const unsigned char *)json, strlen(json))) goto out;
 	ESP_LOGI(TAG, "Subscribed %s; published %s", inbox, BEPIO_MN316_TEST_INBOX);
 	ESP_LOGI(TAG, "Listening %ds; incoming messages will be echoed to %s", seconds, BEPIO_MN316_TEST_INBOX);
@@ -176,7 +176,7 @@ static int mqtt_test(const bepio_mn316_stream_t *stream, const bepio_mn316_tls_c
 				unsigned char *payload = body + 2 + topic_size;
 				size_t count = size - 2 - topic_size;
 				if (bepio_pager_message_parse(payload, count, &message)) {
-					ESP_LOGW(TAG, "MESSAGE REJECTED: invalid From/To/Text/Datetime/At");
+					ESP_LOGW(TAG, "MESSAGE REJECTED: invalid Version/Id/Type/From/To/Text/Datetime/Location");
 					goto heartbeat;
 				}
 				if (strcmp(message.to, credentials->device_id)) {
@@ -191,7 +191,7 @@ static int mqtt_test(const bepio_mn316_stream_t *stream, const bepio_mn316_tls_c
 				strcpy(message.from, credentials->device_id);
 				message.has_location = false;
 				message.address[0] = '\0';
-				if (bepio_pager_message_now(&message) ||
+				if (bepio_pager_message_stamp_new(&message) ||
 				    bepio_pager_message_encode(&message, json, sizeof(json)) ||
 				    publish(m, BEPIO_MN316_TEST_INBOX, (const unsigned char *)json, strlen(json))) goto out;
 				ESP_LOGI(TAG, "Pager reply sent over verified TLS");

@@ -481,6 +481,36 @@ int messages_controller_delete(messages_controller_t *c, bepio_message_box_t box
 	return ret;
 }
 
+int messages_controller_delete_now(messages_controller_t *c, bepio_message_box_t box, uint32_t id)
+{
+	if (box != BEPIO_MESSAGE_INBOX && box != BEPIO_MESSAGE_OUTBOX) return -EINVAL;
+	bepio_mutex_lock(messages_lock);
+	int ret = ready(c, true);
+	if (!ret && c->model->flow.page != MESSAGES_PAGE_DETAIL) ret = -EPERM;
+	bepio_message_t removed;
+	if (!ret) ret = bepio_messaging_get(box, id, false, &removed);
+	if (!ret) ret = bepio_messaging_delete(box, id);
+	if (!ret && c->model->flow.box == box && c->model->flow.selected_id == id) {
+		bool found = false;
+		for (int pass = 0; pass < 2 && !found; pass++) {
+			bepio_message_box_t candidate_box = pass ?
+				(box == BEPIO_MESSAGE_INBOX ? BEPIO_MESSAGE_OUTBOX : BEPIO_MESSAGE_INBOX) : box;
+			bepio_message_t candidate;
+			for (size_t i = 0; !bepio_messaging_get_at(candidate_box, i, &candidate); i++) {
+				if (strcmp(candidate.payload.phone, removed.payload.phone)) continue;
+				c->model->flow.box = candidate_box;
+				c->model->flow.selected_id = candidate.id;
+				found = true;
+				break;
+			}
+		}
+		if (!found) c->model->flow.page = box_page(box);
+	}
+	if (!ret) show_page(c);
+	bepio_mutex_unlock(messages_lock);
+	return ret;
+}
+
 int messages_controller_confirm(messages_controller_t *c, uint32_t *id)
 {
 	int ret = -EPERM;

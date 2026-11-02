@@ -28,14 +28,14 @@ void contacts_controller_set_compose_handler(contacts_controller_t *controller,
 }
 
 static uint16_t frame[240 * 320], draw[320 * 16];
-static bepio_application_t apps[] = {{.name="Contacts"}, {.name="Messages"}, {.name="Settings"}};
+static bepio_application_t apps[] = {{.name="Contacts"}, {.name="Messages"}, {.name="Chats"}, {.name="Notifications", .icon=&ic_notifications}, {.name="Settings"}};
 static bepio_app_manager_cb_fn closed;
 static const char *current;
 static bool consume_back;
 static unsigned force_stops;
 static lv_indev_data_t pointer_data;
-int bepio_app_manager_get_num_apps(void) { return 3; }
-bepio_application_t *bepio_app_manager_get_app(int i) { return i >= 0 && i < 3 ? &apps[i] : NULL; }
+int bepio_app_manager_get_num_apps(void) { return 5; }
+bepio_application_t *bepio_app_manager_get_app(int i) { return i >= 0 && i < 5 ? &apps[i] : NULL; }
 int bepio_app_manager_show(bepio_app_manager_cb_fn cb, void *root, void *group, const char *name)
 {
 	(void)group;
@@ -131,10 +131,14 @@ int main(int argc, char **argv)
 	capture(argv[1]);
 	lv_obj_t *contacts_icon = find_icon(lv_screen_active(), &ic_contacts);
 	lv_obj_t *messages_icon = find_icon(lv_screen_active(), &ic_mail);
+	lv_obj_t *chats_icon = find_icon(lv_screen_active(), &ic_voice_chat);
+	lv_obj_t *notifications_icon = find_icon(lv_screen_active(), &ic_notifications);
 	lv_obj_t *settings_icon = find_icon(lv_screen_active(), &ic_settings);
-	assert(contacts_icon && messages_icon && settings_icon);
+	assert(contacts_icon && messages_icon && chats_icon && notifications_icon && settings_icon);
 	assert(lv_obj_get_x(lv_obj_get_parent(contacts_icon)) < lv_obj_get_x(lv_obj_get_parent(messages_icon)));
-	assert(lv_obj_get_x(lv_obj_get_parent(messages_icon)) < lv_obj_get_x(lv_obj_get_parent(settings_icon)));
+	assert(lv_obj_get_x(lv_obj_get_parent(messages_icon)) < lv_obj_get_x(lv_obj_get_parent(chats_icon)));
+	assert(lv_obj_get_y(lv_obj_get_parent(chats_icon)) < lv_obj_get_y(lv_obj_get_parent(notifications_icon)));
+	assert(lv_obj_get_x(lv_obj_get_parent(notifications_icon)) < lv_obj_get_x(lv_obj_get_parent(settings_icon)));
 	assert(find(lv_layer_top(),"--:--") && find(lv_layer_top(),"NB --"));
 	unsigned top_children=lv_obj_get_child_count(lv_layer_top());
 	swipe(input,120,230,120,165); assert(!find(lv_layer_top(),"Exit app?"));

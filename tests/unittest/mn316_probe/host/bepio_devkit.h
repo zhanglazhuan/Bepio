@@ -1,0 +1,7 @@
+#ifndef TEST_BOARD_H_
+#define TEST_BOARD_H_
+#define BEPIO_MN316_UART_PORT 1
+#define BEPIO_MN316_TX_GPIO 17
+#define BEPIO_MN316_RX_GPIO 18
+#define BEPIO_MN316_BAUD_RATE 9600
+#endif

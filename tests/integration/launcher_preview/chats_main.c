@@ -12,6 +12,7 @@
 static uint16_t frame[320 * 240], draw[320 * 16];
 static lv_display_t *display;
 static bepio_message_t queued;
+static bepio_message_t received;
 static contacts_controller_t contacts_controller;
 
 contacts_controller_t *contacts_app_get_controller(void) { return &contacts_controller; }
@@ -24,6 +25,10 @@ int contacts_controller_lookup_at(contacts_controller_t *controller, size_t inde
 }
 int bepio_messaging_get_at(bepio_message_box_t box, size_t index, bepio_message_t *message)
 {
+	if (box == BEPIO_MESSAGE_INBOX && !index && received.id) {
+		*message = received;
+		return 0;
+	}
 	if (box == BEPIO_MESSAGE_OUTBOX && !index && queued.id) {
 		*message = queued;
 		return 0;
@@ -33,6 +38,10 @@ int bepio_messaging_get_at(bepio_message_box_t box, size_t index, bepio_message_
 int bepio_messaging_get(bepio_message_box_t box, uint32_t id, bool mark_read, bepio_message_t *message)
 {
 	assert(!mark_read);
+	if (box == BEPIO_MESSAGE_INBOX && id == received.id && id) {
+		*message = received;
+		return 0;
+	}
 	if (box == BEPIO_MESSAGE_OUTBOX && id == queued.id && queued.id) {
 		*message = queued;
 		return 0;
@@ -45,6 +54,16 @@ int bepio_messaging_submit(uint32_t draft_id, const bepio_message_payload_t *pay
 	assert(!strcmp(payload->body, "你好"));
 	queued = (bepio_message_t){.id = 1, .state = BEPIO_MESSAGE_QUEUED, .payload = *payload};
 	*id = queued.id;
+	return 0;
+}
+int bepio_messaging_delete(bepio_message_box_t box, uint32_t id)
+{
+	if (box == BEPIO_MESSAGE_INBOX && id == received.id && id) {
+		received.id = 0;
+		return 0;
+	}
+	if (box != BEPIO_MESSAGE_OUTBOX || id != queued.id || !id) return -ENOENT;
+	queued.id = 0;
 	return 0;
 }
 int bepio_messages_voice_play(const char *text) { (void)text; return 0; }
@@ -144,10 +163,33 @@ int main(int argc, char **argv)
 	assert(find_label(screen, "Queued for sending"));
 	assert(!find_label(screen, "No messages yet"));
 	screenshot(argv[1], "chats-queued");
+	received = (bepio_message_t){.id = 2, .state = BEPIO_MESSAGE_RECEIVED,
+		.payload = {.name = "Ada", .phone = "13800138000", .body = "Hello"}};
+	lv_obj_send_event(lv_obj_get_parent(find_label(screen, "Ada")), LV_EVENT_CLICKED, NULL);
+	lv_obj_t *incoming_bubble = lv_obj_get_parent(find_label(screen, "Hello"));
+	lv_obj_t *incoming_row = lv_obj_get_parent(incoming_bubble);
+	assert(lv_obj_get_child(incoming_row, 0) == incoming_bubble);
+	lv_obj_send_event(incoming_bubble, LV_EVENT_CLICKED, NULL);
+	lv_obj_t *incoming_delete = lv_obj_get_child(incoming_row, 1);
+	assert(!lv_obj_has_flag(incoming_delete, LV_OBJ_FLAG_HIDDEN));
+	lv_obj_send_event(incoming_delete, LV_EVENT_CLICKED, NULL);
+	lv_timer_handler();
+	assert(!received.id && !find_label(screen, "Hello") && queued.id);
+	lv_obj_t *voice = find_label(screen, LV_SYMBOL_PLAY "  Voice");
+	assert(voice);
+	lv_obj_t *outgoing_bubble = lv_obj_get_parent(lv_obj_get_parent(voice));
+	lv_obj_t *outgoing_row = lv_obj_get_parent(outgoing_bubble);
+	assert(lv_obj_get_child(outgoing_row, 1) == outgoing_bubble);
+	lv_obj_send_event(outgoing_bubble, LV_EVENT_CLICKED, NULL);
+	lv_obj_t *outgoing_delete = lv_obj_get_child(outgoing_row, 0);
+	assert(!lv_obj_has_flag(outgoing_delete, LV_OBJ_FLAG_HIDDEN));
+	lv_obj_send_event(outgoing_delete, LV_EVENT_CLICKED, NULL);
+	lv_timer_handler();
+	assert(!queued.id && find_label(screen, "No messages yet"));
 	bepio_chats_view_close();
 	bepio_chats_controller_close(&controller);
 	lv_obj_delete(screen);
 	lv_timer_handler();
-	puts("PASS: Chats empty conversation microphone, press, unavailable, release, queue");
+	puts("PASS: Chats recording, received/sent delete sides and immediate removal");
 	return 0;
 }

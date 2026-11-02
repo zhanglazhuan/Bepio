@@ -15,6 +15,7 @@ typedef void *esp_timer_handle_t;
 typedef struct { void (*callback)(void *); const char *name; } esp_timer_create_args_t;
 #define ESP_ERR_NVS_NOT_FOUND 1
 #define ESP_ERR_INVALID_STATE 2
+#define ESP_ERR_INVALID_ARG 3
 #define NVS_READWRITE 0
 static int64_t mock_us;
 static unsigned char blob[256];
@@ -86,3 +87,30 @@ int main(void) {
     exe = d/'test.exe'
     subprocess.run(['gcc','-std=gnu11','-Wall','-Wextra','-Werror','-I',str(d),'-I',str(root/'system/services/account'),str(d/'test.c'),'-o',str(exe)],check=True)
     subprocess.run([str(exe)],check=True)
+    override = r'''
+#define CONFIG_BEPIO_DEVICE_ID_OVERRIDE "100"
+#ifndef ESTALE
+#define ESTALE 116
+#endif
+#include <assert.h>
+#include <string.h>
+#include "bepio_account.c"
+int main(void) {
+ bepio_account_snapshot_t s;
+ assert(!bepio_account_init());
+ bepio_account_snapshot(&s); assert(!strcmp(s.id,"100"));
+ strcpy(saved.id,"123456789"); saved.confirmed=true; saved.next_change=90000;
+ persist(); assert(!storage_error);
+ assert(!bepio_account_init());
+ bepio_account_snapshot(&s);
+ assert(!strcmp(s.id,"100") && !s.confirmed && !saved.next_change);
+ assert(!bepio_account_init());
+ bepio_account_snapshot(&s); assert(!strcmp(s.id,"100"));
+}
+'''
+    (d/'override.c').write_text(override)
+    override_exe = d/'override.exe'
+    subprocess.run(['gcc','-std=gnu11','-Wall','-Wextra','-Werror','-I',str(d),
+                    '-I',str(root/'system/services/account'),str(d/'override.c'),
+                    '-o',str(override_exe)],check=True)
+    subprocess.run([str(override_exe)],check=True)

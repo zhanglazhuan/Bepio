@@ -63,6 +63,25 @@ int contacts_controller_lookup(contacts_controller_t *controller, uint32_t id,
 	return ret;
 }
 
+int contacts_controller_lookup_phone(contacts_controller_t *controller, const char *phone,
+				     contacts_entry_t *entry)
+{
+	if (!controller || !phone || !entry) { return -EINVAL; }
+	bepio_mutex_lock(contacts_lock);
+	int ret = controller->model ? -ENOENT : -ENODEV;
+	if (controller->model) {
+		for (size_t i = 0; i < controller->model->count; i++) {
+			if (!strcmp(controller->model->entries[i].phone, phone)) {
+				*entry = controller->model->entries[i];
+				ret = 0;
+				break;
+			}
+		}
+	}
+	bepio_mutex_unlock(contacts_lock);
+	return ret;
+}
+
 void contacts_controller_init(contacts_controller_t *controller,
 			      contacts_model_t *model, contacts_view_t *view)
 {

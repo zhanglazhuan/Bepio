@@ -36,6 +36,8 @@ int messages_controller_send(messages_controller_t *controller);
 int messages_controller_send_now(messages_controller_t *controller, uint32_t *id);
 int messages_controller_delete(messages_controller_t *controller, bepio_message_box_t box,
 			       uint32_t id);
+int messages_controller_delete_now(messages_controller_t *controller, bepio_message_box_t box,
+				   uint32_t id);
 int messages_controller_confirm(messages_controller_t *controller, uint32_t *id);
 int messages_controller_cancel(messages_controller_t *controller);
 int messages_controller_retry(messages_controller_t *controller, uint32_t id);

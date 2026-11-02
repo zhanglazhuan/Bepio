@@ -20,5 +20,6 @@ typedef struct {
 } bepio_ft6336_frame_t;
 /* Single device; serialize calls. Failed initialization releases the bus. */
 esp_err_t bepio_ft6336_init(const bepio_ft6336_config_t *config);
+/* Counts above MAX_POINTS are filtered into an empty (released) frame. */
 esp_err_t bepio_ft6336_scan(bepio_ft6336_frame_t *frame);
 #endif

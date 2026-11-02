@@ -2,8 +2,8 @@
 
 Settings displays the factory account ID, registration status, an editable ID,
 server result, cooldown, TX/RX JSON bytes and cumulative connection minutes/seconds.
-Custom IDs use 4¨C32 lowercase ASCII letters, digits or underscore. The reserved
-`bepio-` namespace uses the full factory eFuse MAC (not a truncated/random ID).
+Custom IDs contain 1-24 decimal digits.
+The factory ID is the full eFuse MAC represented as decimal digits.
 Factory MAC uniqueness assumes genuine, unmodified hardware. Global account
 reservation and ownership MUST be confirmed by the backend before deployment.
 
@@ -63,7 +63,7 @@ The home screen has a 44px two-line account card without an ID heading, followed
 - Datetime selects named time zones (including DST rules) and 24h/12h format. The shared UI runtime updates the status bar. Until a trusted clock is provided, the device displays --:-- rather than inventing a time. This change does not add NTP or cellular time synchronization.
 - Battery enables display power saving: backlight off after 30 seconds of inactivity; the first touch wakes without activating a control. The modem, audio and CPU are not suspended. Physical backlight/wake verification remains pending.
 - Updates uses reserved https://updates.example.com/bepio/manifest.json as a mock endpoint. Check and update progress are simulated and labeled MOCK. There is no network download, firmware write or restart. Real OTA still requires transport, an authenticated release endpoint and OTA partitions; the current factory app partition is 3 MiB; OTA partitions are still absent.
-- About reads firmware/version/build, ESP-IDF, chip revision/cores, flash, heap and factory MAC through the platform adapter.
+- About reads the current device ID from the account snapshot and firmware/version/build, ESP-IDF, chip revision/cores, flash, heap and factory MAC from the platform adapter. `about_info.c` combines these read-only values for the page.
 
 Datetime and power preferences remain RAM-only, survive app close/reopen, and reset on reboot. Account persistence remains unchanged.
 

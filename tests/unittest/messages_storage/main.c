@@ -1,3 +1,4 @@
+#include "../../../modules/message_uuid.h"
 #include <assert.h>
 #include <errno.h>
 #include <stddef.h>
@@ -61,6 +62,8 @@ int main(void)
 	memcpy(&legacy, flash, sizeof(legacy));
 	strcpy(legacy.inbox[0].payload.phone, "Pager_PC");
 	strcpy(legacy.outbox[0].payload.phone, "+8613800000000");
+	/* Emulate an old snapshot whose outgoing remote_id was unused. */
+	memset(legacy.outbox[0].remote_id, 0, sizeof(legacy.outbox[0].remote_id));
 	memcpy(flash, &legacy, sizeof(legacy));
 	assert(bepio_messaging_init() == 0);
 	assert(bepio_messaging_retention_days() == 14);
@@ -71,6 +74,24 @@ int main(void)
 	assert(bepio_messaging_get(BEPIO_MESSAGE_OUTBOX, outgoing, false, &message) == 0);
 	assert(message.state == BEPIO_MESSAGE_QUEUED);
 	assert(!strcmp(message.payload.phone, "8613800000000"));
+
+	bepio_message_t first, restored;
+	bepio_messaging_set_online(true);
+	write_error = -EIO;
+	assert(bepio_messaging_begin(false, &first) == -EIO);
+	assert(bepio_messaging_get(BEPIO_MESSAGE_OUTBOX, outgoing, false, &message) == 0);
+	assert(message.state == BEPIO_MESSAGE_QUEUED && !message.remote_id[0]);
+	write_error = 0;
+	assert(bepio_messaging_begin(false, &first) == 0);
+	assert(bepio_message_uuid_valid(first.remote_id));
+	/* Interrupted sending is restored to queued with the same wire identity. */
+	assert(bepio_messaging_init() == 0);
+	bepio_messaging_set_online(true);
+	assert(bepio_messaging_begin(false, &restored) == 0);
+	assert(!strcmp(first.remote_id, restored.remote_id));
+	assert(first.timestamp_ms == restored.timestamp_ms);
+	assert(bepio_messaging_complete(outgoing, restored.attempt, false, false) == 0);
+	assert(bepio_messaging_retry(outgoing) == 0);
 	assert(bepio_messaging_set_retention_days(3) == 0);
 	write_error = -EIO;
 	assert(bepio_messaging_prune(now) == -EIO);

@@ -12,3 +12,5 @@
 `messages/` 为第三个应用，提供收发箱、草稿编辑、确认发送与删除，
 通过 `system/services/messaging/` 管理消息。联系人通过只读快照接口访问，不必切换应用。
 真实服务端未接入时普通消息保留在队列，独立演示构建可显式模拟收发。
+
+`notifications/`：手机通知聚合，沿用 MQTT inbox，通过 Type=notification 分流；列表/详情、未读和更新去重，16 条 RAM 缓存。协议与限制见 notifications/README.md。

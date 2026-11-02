@@ -1,0 +1,5 @@
+#ifndef BEPIO_TEST_SHA_CONFIG_H_
+#define BEPIO_TEST_SHA_CONFIG_H_
+#define MBEDTLS_SHA256_C
+#define MBEDTLS_PLATFORM_C
+#endif

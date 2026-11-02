@@ -80,7 +80,7 @@ void bepio_account_snapshot(bepio_account_snapshot_t *a)
 int bepio_account_request(const char *id) { (void)id; return -ENETDOWN; }
 void bepio_device_info(char *buffer, size_t size)
 {
-	snprintf(buffer, size, "Bepio v1\nESP32-S3\nHost preview fixture");
+	snprintf(buffer, size, "Firmware: Bepio v1\nChip: ESP32-S3 rev 0 / 2 cores\nBuild: Host preview fixture");
 }
 static bool files_mounted;
 static unsigned retention_days = 7;
@@ -250,7 +250,7 @@ int main(int argc, char **argv)
 	lv_obj_scroll_to_y(root, 190, LV_ANIM_OFF);
 	screenshot("settings-storage-retention");
 	screenshot("settings-storage-mounted"); back_home(c);
-	click("About"); assert(find_text(root, "Bepio v1\nESP32-S3\nHost preview fixture"));
+	click("About"); assert(find_text(root, "Device ID: 187723572702975\nFirmware: Bepio v1\nChip: ESP32-S3 rev 0 / 2 cores\nBuild: Host preview fixture"));
 	screenshot("settings-about"); click(LV_SYMBOL_LEFT);
 	assert(c->view->page_nav.current_page == SETTINGS_PAGE_HOME);
 	click("187723572702975"); assert(c->view->page_nav.current_page == SETTINGS_PAGE_ID);

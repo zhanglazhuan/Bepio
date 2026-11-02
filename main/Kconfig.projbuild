@@ -24,6 +24,14 @@ config BEPIO_MN316
 	bool "Probe MN316 over UART1 at startup"
 	default y
 
+config BEPIO_DEVICE_ID_OVERRIDE
+	string "Development board numeric device ID override"
+	depends on !BEPIO_PRODUCTION_BUILD
+	default ""
+	help
+	  Set only for a specific development board. Empty uses its eFuse MAC
+	  as a decimal ID. A changed override replaces the saved local ID.
+
 config BEPIO_MAX_APPS
 	int "Maximum registered applications"
 	range 1 25
@@ -82,6 +90,16 @@ config BEPIO_MESSAGES_DEMO
 config BEPIO_APP_CHATS
 	bool "Chats application"
 	depends on BEPIO_APP_CONTACTS && BEPIO_APP_MESSAGES
+	default y
+
+config BEPIO_APP_NOTIFICATIONS
+	bool "Phone notification aggregation application"
+	depends on BEPIO_APP_MESSAGES
+	default y
+
+config BEPIO_NOTIFICATIONS_DEMO
+	bool "Seed example phone notifications"
+	depends on BEPIO_APP_NOTIFICATIONS && !BEPIO_PRODUCTION_BUILD
 	default y
 
 endmenu

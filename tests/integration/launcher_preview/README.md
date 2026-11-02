@@ -53,3 +53,16 @@ python tests/unittest/orientation/run.py
 
 此测试不是实板SPI吞吐测试，不证明FreeRTOS双任务调度、ISR唤醒或40MHz走线稳定性。
 实际显示性能需要在实板验证。
+
+## Notifications GUI
+
+```powershell
+cmake -S tests/integration/launcher_preview -B build/launcher-preview
+cmake --build build/launcher-preview --target notifications_preview launcher_preview -j 6
+./build/launcher-preview/notifications_preview.exe build/launcher-preview
+./build/launcher-preview/launcher_preview.exe build/launcher-preview/notifications-home.ppm
+```
+
+使用明确的主机通知数据验证实时列表、详情/已读、返回、删除、关闭重开与应用 40×40 图标；
+launcher_preview 还检查应用描述符的自定义图标被实际展示。
+截图位于 docs/assets/notifications-*.png；不证明手机通知权限、MQTT 或实板显示正常。

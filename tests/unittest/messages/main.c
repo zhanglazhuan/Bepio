@@ -1,3 +1,4 @@
+#include "modules/message_uuid.h"
 #include <assert.h>
 #include <errno.h>
 #include <stdio.h>
@@ -128,6 +129,7 @@ static void test_queue(void)
 	bepio_messaging_set_online(true);
 	assert(bepio_messaging_begin(false, &first_send) == 0);
 	assert(first_send.attempt == 1 && !first_send.simulated);
+	assert(bepio_message_uuid_valid(first_send.remote_id));
 	assert(bepio_messaging_begin(false, &message) == -EBUSY);
 	assert(bepio_messaging_delete(BEPIO_MESSAGE_OUTBOX, id) == -EBUSY);
 	assert(bepio_messaging_complete(id, 1, true, true) == -ESTALE);
@@ -135,6 +137,8 @@ static void test_queue(void)
 	assert(bepio_messaging_retry(id) == 0);
 	assert(bepio_messaging_begin(false, &retry_send) == 0);
 	assert(retry_send.id == first_send.id && retry_send.attempt == 2);
+	assert(!strcmp(retry_send.remote_id, first_send.remote_id));
+	assert(retry_send.timestamp_ms == first_send.timestamp_ms);
 	assert(!strcmp(retry_send.payload.body, first_send.payload.body));
 	assert(bepio_messaging_complete(id, 1, false, true) == -ESTALE);
 	assert(bepio_messaging_complete(id, 2, false, true) == 0);
@@ -143,6 +147,8 @@ static void test_queue(void)
 	assert(bepio_messaging_retry(id) == -EPERM);
 	assert(bepio_messaging_submit(0, &updated, &second) == 0);
 	assert(bepio_messaging_begin(true, &message) == 0);
+	assert(bepio_message_uuid_valid(message.remote_id));
+	assert(strcmp(message.remote_id, first_send.remote_id));
 	assert(bepio_messaging_complete(second, message.attempt, true, true) == 0);
 	assert(bepio_messaging_get(BEPIO_MESSAGE_OUTBOX, second, false, &message) == 0);
 	assert(message.simulated &&
@@ -199,6 +205,14 @@ static void test_app(void)
 	assert(contacts_controller_add(contacts, "Mom", "8613800000000", &contact_id) == 0);
 	assert(bepio_app_manager_delete() == 0);
 	assert(contacts_controller_lookup(contacts, contact_id, &contact) == 0);
+	bepio_message_t from_mom = {.payload = {.name = "8613800000000", .phone = "8613800000000"}};
+	char display[BEPIO_MESSAGE_NAME_MAX + 1];
+	messages_model_contact_name(&from_mom, BEPIO_MESSAGE_INBOX, display, sizeof(display));
+	assert(!strcmp(display, "Mom"));
+	strcpy(from_mom.payload.phone, "100");
+	strcpy(from_mom.payload.name, "100");
+	messages_model_contact_name(&from_mom, BEPIO_MESSAGE_INBOX, display, sizeof(display));
+	assert(!strcmp(display, "*"));
 	assert(COMMAND("home") == 0);
 	assert(strstr(host_shell_output, "offline"));
 	assert(COMMAND("contacts") == 0);

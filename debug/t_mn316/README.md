@@ -50,7 +50,7 @@ emqx_send 5 hahaha
 `check` 检查 AT、信号、注册、附着和 IP。`emqx_send [1..600] [text]` 等待入网，
 完成 TLS/MQTT 登录和订阅后发送一次指定正文（默认 `MN316 TLS test message`），再监听指定秒数。
 此命令复用有界诊断会话：上行为 QoS 0、非保留；有效下行会自动回显。
-发送 JSON 使用 `From`、`To`、`Text`、`Datetime`、`At`，无定位时 `At: null`。
+发送 JSON 使用 `Version: 1`、`Id`（UUID v4）、`Type: "message"`、`From`、`To`、`Text`、`Datetime`、`Location`，无定位时 `Location: null`。接收时 Version、Type、Location 可省略，默认分别为 1、message、null；From、To、Text、Datetime 必填；Id 可省略，按这四个字段的 SHA-256 生成稳定的 legacy: 摘要 ID 供去重。PC 端需使用此协议；历史测试记录中的 At 为旧协议。
 成功写入 TLS 不证明 PC 收到，应以 PC 实际接收为准。
 
 自动开启独立 PC 校验订阅者，并从串口触发实板发送：
@@ -63,7 +63,7 @@ python debug/t_mn316/test_emqx.py --port COM8 --device-id <本机数字ID>
 PC 收到并核对 From/To/Text 后打印 `PC_RECEIVE_PASS`，会话正常退出后打印最终 PASS。
 串口及成功收件日志位于 `build/emqx-hardware.log`，不会保存凭据。
 
-会话临时将模组 UART 切换为 115200，退出恢复 9600；若中途复位导致不同步，需给模组重新上电。
+会话临时将模组 UART 切换为 115200，退出恢复 9600；若中途复位，启动探测会尝试在 115200 找到模组并恢复 9600。
 此工程烧录会替换主应用和分区表，但不擦除或烧录模型分区；恢复主工程需要重新烧录主工程。
 
 ## 2026-11-01 首轮实板复测（旧凭据，COM8）

@@ -49,10 +49,7 @@ esp_err_t bepio_ft6336_init(const bepio_ft6336_config_t *config)
 	uint8_t status;
 	ret = read_reg(0x02, &status, 1);
 	if (ret != ESP_OK) { goto fail; }
-	if ((status & 0x0f) > BEPIO_FT6336_MAX_POINTS) {
-		ret = ESP_ERR_INVALID_RESPONSE;
-		goto fail;
-	}
+	/* Unsupported contact counts are filtered by scan, not an init failure. */
 	ESP_LOGI(TAG, "FT6336-compatible device responds at 0x38; status=0x%02x", status);
 	return ESP_OK;
 fail:
@@ -71,7 +68,9 @@ esp_err_t bepio_ft6336_scan(bepio_ft6336_frame_t *frame)
 	esp_err_t ret = read_reg(0x02, raw, sizeof(raw));
 	if (ret != ESP_OK) { return ret; }
 	unsigned count = raw[0] & 0x0f;
-	if (count > BEPIO_FT6336_MAX_POINTS) { return ESP_ERR_INVALID_RESPONSE; }
+	/* Ignore unsupported frames as released; do not parse partial contacts.
+	 * Transport failures above still propagate to the caller. */
+	if (count > BEPIO_FT6336_MAX_POINTS) { return ESP_OK; }
 	for (unsigned i = 0; i < count; i++) {
 		const uint8_t *p = raw + 1 + i * 6;
 		unsigned event = p[0] >> 6;

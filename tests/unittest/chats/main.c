@@ -17,6 +17,7 @@ static const bepio_message_t outgoing[] = {
 };
 static char spoken[BEPIO_MESSAGE_BODY_MAX + 1];
 static bepio_message_t submitted;
+static unsigned deleted_mask;
 static unsigned started, stopped, cancelled;
 static const char *transcript = "发给你了";
 
@@ -52,11 +53,12 @@ int contacts_controller_lookup_at(contacts_controller_t *controller, size_t inde
 }
 int bepio_messaging_get_at(bepio_message_box_t box, size_t index, bepio_message_t *message)
 {
-	if (box == BEPIO_MESSAGE_OUTBOX && index == 1 && submitted.id) {
+	if (box == BEPIO_MESSAGE_OUTBOX && index == ((deleted_mask & 2u) ? 0u : 1u) && submitted.id) {
 		*message = submitted;
 		return 0;
 	}
 	if (index) { return -ENOENT; }
+	if (deleted_mask & (box == BEPIO_MESSAGE_INBOX ? 1u : 2u)) return -ENOENT;
 	*message = box == BEPIO_MESSAGE_INBOX ? incoming[0] : outgoing[0];
 	return 0;
 }
@@ -79,6 +81,13 @@ int bepio_messaging_submit(uint32_t draft_id, const bepio_message_payload_t *pay
 	assert(!strcmp(payload->body, transcript));
 	submitted = (bepio_message_t){.id = 3, .state = BEPIO_MESSAGE_QUEUED, .payload = *payload};
 	*id = submitted.id;
+	return 0;
+}
+int bepio_messaging_delete(bepio_message_box_t box, uint32_t id)
+{
+	if (box == BEPIO_MESSAGE_INBOX && id == 1) deleted_mask |= 1u;
+	else if (box == BEPIO_MESSAGE_OUTBOX && id == 2) deleted_mask |= 2u;
+	else return -ENOENT;
 	return 0;
 }
 int bepio_messages_voice_play(const char *text)
@@ -110,6 +119,16 @@ int main(void)
 	assert(message.outgoing && message.demo);
 	assert(!bepio_chats_controller_play(&controller, 3));
 	assert(!strcmp(spoken, "有空，我们三点见。"));
+	assert(!bepio_chats_controller_delete_message(&controller, 1));
+	assert(!bepio_chats_controller_message_at(&controller, 1, &message));
+	assert(message.demo && !message.outgoing);
+	assert(!bepio_chats_controller_delete_message(&controller, 1));
+	assert(!bepio_chats_controller_message_at(&controller, 1, &message));
+	assert(message.demo && message.outgoing);
+	assert(!bepio_chats_controller_delete_message(&controller, 1));
+	assert(!bepio_chats_controller_message_at(&controller, 1, &message) && message.demo);
+	assert(!bepio_chats_controller_delete_message(&controller, 1));
+	assert(bepio_chats_controller_message_at(&controller, 1, &message) == -ENOENT);
 	assert(!bepio_chats_controller_select(&controller, 0));
 	assert(bepio_chats_controller_message_at(&controller, 0, &message) == -ENOENT);
 	assert(bepio_chats_controller_record_start(&controller) == -ENOTSUP);

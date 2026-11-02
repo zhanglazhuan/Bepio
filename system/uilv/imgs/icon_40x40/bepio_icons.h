@@ -8,5 +8,6 @@ LV_IMAGE_DECLARE(ic_contacts);
 LV_IMAGE_DECLARE(ic_mail);
 LV_IMAGE_DECLARE(ic_settings);
 LV_IMAGE_DECLARE(ic_voice_chat);
+LV_IMAGE_DECLARE(ic_notifications);
 
 #endif

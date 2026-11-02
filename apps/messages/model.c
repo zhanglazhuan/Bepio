@@ -1,5 +1,7 @@
 #include "model.h"
+#include "apps/contacts/app.h"
 #include <errno.h>
+#include <stdio.h>
 #include <string.h>
 
 int messages_model_compose(messages_model_t *model, const bepio_message_payload_t *payload,
@@ -55,4 +57,18 @@ void messages_model_discard(messages_model_t *model)
 	model->draft_id = 0;
 	memset(&model->editor, 0, sizeof(model->editor));
 	model->pending = MESSAGES_PENDING_NONE;
+}
+
+void messages_model_contact_name(const bepio_message_t *message,
+	bepio_message_box_t box, char *name, size_t capacity)
+{
+	if (!name || !capacity) { return; }
+	name[0] = '\0';
+	if (!message) { return; }
+	contacts_entry_t contact;
+	const char *display = !contacts_controller_lookup_phone(contacts_app_get_controller(),
+		message->payload.phone, &contact) ? contact.name :
+		box == BEPIO_MESSAGE_INBOX && !message->simulated ? "*" :
+		message->payload.name[0] ? message->payload.name : message->payload.phone;
+	snprintf(name, capacity, "%s", display);
 }

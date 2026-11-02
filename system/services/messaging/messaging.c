@@ -1,5 +1,6 @@
 #include "messaging.h"
 #include "../../../modules/pager_id.h"
+#include "../../../modules/message_uuid.h"
 #ifdef ESP_PLATFORM
 #include "bepio_account.h"
 #endif
@@ -339,8 +340,12 @@ static int store(uint32_t draft_id, const bepio_message_payload_t *payload, uint
 	entry->payload = *payload;
 	entry->state = submit ? BEPIO_MESSAGE_QUEUED : BEPIO_MESSAGE_DRAFT;
 	if (!entry->timestamp_ms) { entry->timestamp_ms = clock_ms(); }
+	if (!entry->remote_id[0] && bepio_message_uuid_generate(entry->remote_id)) {
+		ret = -EIO;
+	} else {
+		ret = persist_locked();
+	}
 	*id = entry->id;
-	ret = persist_locked();
 	if (ret) {
 		if (updating) { *entry = previous; }
 		else { memset(entry, 0, sizeof(*entry)); outbox_count--; next_id--; }
@@ -516,6 +521,12 @@ int bepio_messaging_begin(bool simulated, bepio_message_t *message)
 				break;
 			}
 			bepio_message_t previous = outbox[i];
+			/* Upgrade old queued records without changing the snapshot layout. */
+			if (!outbox[i].remote_id[0] && bepio_message_uuid_generate(outbox[i].remote_id)) {
+				ret = -EIO;
+				break;
+			}
+			if (!outbox[i].timestamp_ms) outbox[i].timestamp_ms = clock_ms();
 			outbox[i].state = BEPIO_MESSAGE_SENDING;
 			outbox[i].attempt++;
 			outbox[i].simulated = simulated;
@@ -638,6 +649,10 @@ int bepio_messaging_init(void)
 		if (!copy->outbox[i].id || copy->outbox[i].id >= copy->next_id ||
 		    copy->outbox[i].state < BEPIO_MESSAGE_DRAFT ||
 		    copy->outbox[i].state > BEPIO_MESSAGE_FAILED ||
+		    !memchr(copy->outbox[i].remote_id, 0, sizeof(copy->outbox[i].remote_id)) ||
+		    (copy->outbox[i].remote_id[0] && !bepio_message_uuid_valid(copy->outbox[i].remote_id)) ||
+		    !memchr(copy->outbox[i].remote_id, 0, sizeof(copy->outbox[i].remote_id)) ||
+		    (copy->outbox[i].remote_id[0] && !bepio_message_uuid_valid(copy->outbox[i].remote_id)) ||
 		    !memchr(copy->outbox[i].payload.name, 0, sizeof(copy->outbox[i].payload.name)) ||
 		    !memchr(copy->outbox[i].payload.phone, 0, sizeof(copy->outbox[i].payload.phone)) ||
 		    !memchr(copy->outbox[i].payload.body, 0, sizeof(copy->outbox[i].payload.body)) ||

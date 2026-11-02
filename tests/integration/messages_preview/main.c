@@ -171,6 +171,8 @@ int main(int argc, char **argv)
 	capture(argv[1], "inbox");
 	click("Alex");
 	assert(model.flow.page == MESSAGES_PAGE_DETAIL);
+	assert(find_label(active_page().header_right, "Reply"));
+	assert(!find_label(root, "Reply"));
 	assert(find_label(root, LV_SYMBOL_PLAY "  Play voice"));
 	assert(!find_label(root, "Delete message"));
 	capture(argv[1], "chat");
@@ -286,6 +288,50 @@ int main(int argc, char **argv)
 	assert(find_label(root, "No messages yet"));
 	assert(find_label(active_page().header_right, LV_SYMBOL_PLUS));
 	capture(argv[1], "empty");
+	bepio_message_payload_t live = {.name = "Live Peer", .phone = "13800138001", .body = "New text"};
+	uint32_t live_id;
+	assert(bepio_messaging_receive("live-refresh-test", &live, 0, false, &live_id) == 0);
+	lv_tick_inc(1100);
+	lv_timer_handler();
+	assert(find_label(root, "* *"));
+	click("* *");
+	assert(find_label(root, "*(13800138001)"));
+	assert(messages_controller_back(&controller));
+	click("*");
+	lv_obj_t *trash = find_label(root, LV_SYMBOL_TRASH);
+	assert(trash && lv_obj_has_flag(lv_obj_get_parent(trash), LV_OBJ_FLAG_HIDDEN));
+	lv_obj_t *bubble = lv_obj_get_child(lv_obj_get_child(root, 2), 0);
+	lv_obj_send_event(bubble, LV_EVENT_CLICKED, NULL);
+	assert(!lv_obj_has_flag(lv_obj_get_parent(trash), LV_OBJ_FLAG_HIDDEN));
+	lv_obj_send_event(lv_obj_get_parent(trash), LV_EVENT_CLICKED, NULL);
+	assert(model.flow.page == MESSAGES_PAGE_HOME && model.pending == MESSAGES_PENDING_NONE);
+	assert(bepio_messaging_get(BEPIO_MESSAGE_INBOX, live_id, false, &remaining) == -ENOENT);
+	uint32_t self_contact_id;
+	assert(contacts_model_add(contacts_app_get_controller()->model, "Self", "100",
+		&self_contact_id) == 0);
+	bepio_message_payload_t self_inbox = {.name = "100", .phone = "100", .body = "Loopback"};
+	assert(bepio_messaging_receive("self-display-test", &self_inbox, 0, false, &live_id) == 0);
+	assert(messages_controller_home(&controller) == 0);
+	assert(find_label(root, "* Self"));
+	bepio_message_payload_t self_draft = {.name = "Self", .phone = "100", .body = "Draft"};
+	uint32_t self_draft_id;
+	assert(bepio_messaging_save(0, &self_draft, &self_draft_id) == 0);
+	click("* Self");
+	assert(find_label(root, "Self(100)"));
+	lv_obj_t *draft_bubble = lv_obj_get_parent(find_label(root, "Draft"));
+	lv_obj_t *draft_row = lv_obj_get_parent(draft_bubble);
+	assert(lv_obj_get_child(draft_row, 1) == draft_bubble);
+	lv_obj_send_event(draft_bubble, LV_EVENT_CLICKED, NULL);
+	lv_obj_t *draft_trash = lv_obj_get_child(draft_row, 0);
+	assert(!lv_obj_has_flag(draft_trash, LV_OBJ_FLAG_HIDDEN));
+	lv_obj_send_event(draft_trash, LV_EVENT_CLICKED, NULL);
+	assert(model.flow.page == MESSAGES_PAGE_DETAIL && find_label(root, "Self(100)"));
+	assert(bepio_messaging_get(BEPIO_MESSAGE_OUTBOX, self_draft_id, false, &remaining) == -ENOENT);
+	lv_obj_t *reply = find_label(active_page().header_right, "Reply");
+	assert(reply);
+	lv_obj_send_event(lv_obj_get_parent(reply), LV_EVENT_CLICKED, NULL);
+	assert(model.flow.page == MESSAGES_PAGE_COMPOSE && !strcmp(model.editor.phone, "100"));
+	assert(messages_controller_discard(&controller) == 0);
 	/* Unknown recipients in replies/old drafts cannot bypass the selector. */
 	assert(messages_controller_new(&controller, "13500135000", "Unknown") == 0);
 	assert(lv_dropdown_get_selected(dropdown()) == 0);
@@ -304,6 +350,6 @@ int main(int argc, char **argv)
 	assert(lv_obj_has_state(send_button(), LV_STATE_DISABLED));
 	capture(argv[1], "no-contacts");
 	messages_controller_deinit(&controller);
-	puts("PASS: actual LVGL events: default inbox, header +, read, detail without delete, compose, direct send");
+	puts("PASS: actual LVGL events: inbox, header reply, direct detail delete, compose and send");
 	return 0;
 }

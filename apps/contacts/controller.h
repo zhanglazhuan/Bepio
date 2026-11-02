@@ -22,6 +22,8 @@ void contacts_controller_set_ui_available(contacts_controller_t *controller, boo
 /* Read-only service access; does not require an active UI or change navigation. */
 int contacts_controller_lookup(contacts_controller_t *controller, uint32_t id,
 			       contacts_entry_t *entry);
+int contacts_controller_lookup_phone(contacts_controller_t *controller, const char *phone,
+				     contacts_entry_t *entry);
 int contacts_controller_lookup_at(contacts_controller_t *controller, size_t index,
 				  contacts_entry_t *entry);
 int contacts_controller_list(contacts_controller_t *controller, size_t *count);

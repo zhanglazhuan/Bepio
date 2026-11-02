@@ -9,8 +9,47 @@
 
 typedef struct bepio_chats_page {
 	lv_obj_t *root, *conversation, *thread, *notice, *record_button, *selected_button;
+	lv_obj_t *selected_delete;
 	bepio_chats_controller_t *controller;
 } bepio_chats_page_t;
+
+static void render_conversation(bepio_chats_page_t *page);
+
+static void refresh_after_delete(void *context)
+{
+	render_conversation(context);
+}
+
+static void cancel_pending_refresh(lv_event_t *event)
+{
+	bepio_chats_page_t *page = lv_event_get_user_data(event);
+	lv_async_call_cancel(refresh_after_delete, page);
+}
+
+static void select_message(lv_event_t *event)
+{
+	bepio_chats_page_t *page = lv_event_get_user_data(event);
+	if (page->selected_delete) lv_obj_add_flag(page->selected_delete, LV_OBJ_FLAG_HIDDEN);
+	lv_obj_t *bubble = lv_event_get_target_obj(event);
+	lv_obj_t *row = lv_obj_get_parent(bubble);
+	bool sent = (uintptr_t)lv_obj_get_user_data(bubble) != 0;
+	page->selected_delete = lv_obj_get_child(row, sent ? 0 : 1);
+	lv_obj_remove_flag(page->selected_delete, LV_OBJ_FLAG_HIDDEN);
+}
+
+static void delete_message(lv_event_t *event)
+{
+	bepio_chats_page_t *page = lv_event_get_user_data(event);
+	lv_obj_t *row = lv_obj_get_parent(lv_event_get_target_obj(event));
+	size_t index = (size_t)(uintptr_t)lv_obj_get_user_data(row);
+	int ret = bepio_chats_controller_delete_message(page->controller, index);
+	if (ret) {
+		lv_label_set_text(page->notice, ret == -EBUSY ? "Message is sending" :
+			"Could not delete message");
+	} else if (lv_async_call(refresh_after_delete, page) != LV_RESULT_OK) {
+		lv_label_set_text(page->notice, "Could not refresh conversation");
+	}
+}
 
 static lv_obj_t *label(lv_obj_t *parent, const char *value, uint32_t color)
 {
@@ -38,6 +77,7 @@ static void play(lv_event_t *event)
 static void render_conversation(bepio_chats_page_t *page)
 {
 	lv_obj_t *conversation = page->thread;
+	page->selected_delete = NULL;
 	lv_obj_clean(conversation);
 	bepio_chats_contact_t contact;
 	if (bepio_chats_controller_contact_at(page->controller,
@@ -62,6 +102,7 @@ static void render_conversation(bepio_chats_page_t *page)
 		lv_obj_set_style_border_width(row, 0, 0);
 		lv_obj_set_style_pad_all(row, 0, 0);
 		lv_obj_remove_flag(row, LV_OBJ_FLAG_SCROLLABLE);
+		lv_obj_set_user_data(row, (void *)(uintptr_t)i);
 		lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
 		lv_obj_set_flex_align(row, sent ? LV_FLEX_ALIGN_END : LV_FLEX_ALIGN_START,
 			LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
@@ -75,6 +116,9 @@ static void render_conversation(bepio_chats_page_t *page)
 		lv_obj_set_style_pad_row(bubble, 4, 0);
 		lv_obj_remove_flag(bubble, LV_OBJ_FLAG_SCROLLABLE);
 		lv_obj_set_flex_flow(bubble, LV_FLEX_FLOW_COLUMN);
+		lv_obj_set_user_data(bubble, (void *)(uintptr_t)(sent ? 1 : 0));
+		lv_obj_add_flag(bubble, LV_OBJ_FLAG_CLICKABLE);
+		lv_obj_add_event_cb(bubble, select_message, LV_EVENT_CLICKED, page);
 		if (chinese_text(message.body)) {
 			lv_obj_t *button = lv_button_create(bubble);
 			lv_obj_set_width(button, lv_pct(100));
@@ -87,6 +131,16 @@ static void render_conversation(bepio_chats_page_t *page)
 			lv_obj_set_width(body, lv_pct(100));
 		}
 		if (message.demo) { label(bubble, "Demo", 0xb7c6dc); }
+		lv_obj_t *remove = lv_button_create(row);
+		lv_obj_set_size(remove, 30, 30);
+		lv_obj_set_style_bg_color(remove, lv_color_hex(0x8d3e4a), 0);
+		lv_obj_set_style_radius(remove, 7, 0);
+		lv_obj_set_style_shadow_width(remove, 0, 0);
+		lv_obj_add_flag(remove, LV_OBJ_FLAG_HIDDEN);
+		lv_obj_add_event_cb(remove, delete_message, LV_EVENT_CLICKED, page);
+		lv_obj_t *icon = label(remove, LV_SYMBOL_TRASH, 0xffffff);
+		lv_obj_center(icon);
+		if (sent) lv_obj_move_to_index(remove, 0);
 	}
 }
 
@@ -149,6 +203,7 @@ lv_obj_t *bepio_chats_main_build(void *app, void *payload)
 	if (!page) { return NULL; }
 	Page shell = lv_page_create("Chats", false, NULL, NULL);
 	if (!shell.screen) { free(page); return NULL; }
+	lv_obj_add_event_cb(shell.screen, cancel_pending_refresh, LV_EVENT_DELETE, page);
 	page->root = shell.container;
 	page->controller = view->controller;
 	lv_obj_set_style_pad_all(page->root, 0, 0);

@@ -22,6 +22,10 @@ int bepio_messaging_get(bepio_message_box_t box, uint32_t id, bool mark_read,
 	(void)box; (void)id; (void)mark_read; (void)message;
 	return -ENOENT;
 }
+int bepio_messaging_delete(bepio_message_box_t box, uint32_t id)
+{
+	(void)box; (void)id; return -ENOENT;
+}
 int bepio_messages_voice_play(const char *text) { (void)text; return -ENOTSUP; }
 int bepio_messaging_submit(uint32_t draft_id, const bepio_message_payload_t *payload, uint32_t *id)
 {

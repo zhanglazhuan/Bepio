@@ -37,8 +37,7 @@ int bepio_mn316_mqtt_session(const bepio_mn316_mqtt_io_t *io,
 				if (!bepio_pager_id_valid(message.to, BEPIO_PAGER_NAME_MAX)) goto out;
 				snprintf(topic, sizeof(topic), BEPIO_MN316_TOPIC_PREFIX "%.64s/inbox",
 					message.to);
-				if (bepio_pager_message_now(&message) ||
-				    bepio_pager_message_encode(&message, json, sizeof(json))) goto out;
+				if (bepio_pager_message_encode(&message, json, sizeof(json))) goto out;
 				size_t n = mqtt_field(body, topic);
 				if (++packet == 0) packet = 2;
 				body[n++] = packet >> 8; body[n++] = packet & 255;

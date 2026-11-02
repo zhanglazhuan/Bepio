@@ -95,7 +95,8 @@ int bepio_chats_model_select(bepio_chats_model_t *model, size_t index)
 	}
 #ifdef CONFIG_BEPIO_MESSAGES_DEMO
 	for (size_t i = 0; i < BEPIO_CHATS_MOCK_MESSAGES; i++) {
-		if (!strcmp(mock_messages[i].phone, phone) &&
+		if (!(model->dismissed_demo & (1u << i)) &&
+	    !strcmp(mock_messages[i].phone, phone) &&
 		    model->message_count < BEPIO_CHATS_MESSAGE_CAPACITY) {
 			model->conversation[model->message_count++] = (bepio_chats_ref_t){.mock_index = (int8_t)i};
 		}

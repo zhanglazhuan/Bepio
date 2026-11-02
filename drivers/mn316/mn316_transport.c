@@ -44,6 +44,8 @@ struct transport {
 	int socket;
 	int sent;
 	int mqtt_state;
+	unsigned socket_mask;
+	int last_cme;
 	char ip[16];
 	time_t network_time;
 	int64_t network_time_at;
@@ -67,6 +69,7 @@ static void parse_line(struct transport *t, char *line)
 		xEventGroupSetBits(t->events, AT_OK);
 	} else if (!strcmp(line, "ERROR") || !strncmp(line, "+CME ERROR:", 11) ||
 		   strstr(line, "CONNECT FAIL")) {
+		if (sscanf(line, "+CME ERROR:%d", &t->last_cme) != 1) t->last_cme = 0;
 		ESP_LOGE(TAG, "Modem: %s", line);
 		xEventGroupSetBits(t->events, AT_ERROR);
 	} else if (!strcmp(line, "CONNECT OK")) {
@@ -75,6 +78,8 @@ static void parse_line(struct transport *t, char *line)
 		t->mqtt_state = bepio_mn316_internal_mqtt_state(line);
 	} else if (sscanf(line, "+NSOCR: %d", &id) == 1) {
 		t->socket = id;
+	} else if (sscanf(line, "+NSOCFG: %d,", &id) == 1 && id >= 0 && id < 2) {
+		t->socket_mask |= 1u << id;
 	} else if (sscanf(line, "+NSOSD: %d,%d", &id, &length) == 2 && id == t->socket) {
 		t->sent = length;
 	} else if (sscanf(line, "+NSOCLI: %d", &id) == 1 && id == t->socket) {
@@ -312,7 +317,27 @@ static int tls_session_locked(const bepio_mn316_transport_config_t *config,
 		ESP_LOGE(TAG, "Cellular DNS failed"); goto cleanup;
 	}
 	ESP_LOGI(TAG, "Cellular DNS %s -> %s", config->host, t->ip);
-	if (command(t, "AT+NSOCR=STREAM,6,0,2", 5000) || t->socket < 0) goto cleanup;
+	ret = command(t, "AT+NSOCR=STREAM,6,0,2", 5000);
+	if (ret == -EIO && t->last_cme == 8002) {
+		/* ESP32 can restart without resetting MN316, leaving its two sockets
+		 * allocated. The modem's NSOCFG query lists only live sockets. */
+		t->socket_mask = 0;
+		if (!command(t, "AT+NSOCFG?", 3000) && t->socket_mask) {
+			ESP_LOGW(TAG, "Socket create rejected; closing stale socket mask=0x%x", t->socket_mask);
+			for (int id = 0; id < 2; id++) {
+				if (!(t->socket_mask & (1u << id))) continue;
+				snprintf(t->command, sizeof(t->command), "AT+NSOCL=%d", id);
+				if (command(t, t->command, 5000)) goto cleanup;
+			}
+			vTaskDelay(pdMS_TO_TICKS(300));
+			ret = command(t, "AT+NSOCR=STREAM,6,0,2", 5000);
+		}
+	}
+	if (ret || t->socket < 0) {
+		ESP_LOGE(TAG, "TCP socket create failed (%d, CME=%d, allocated=0x%x)",
+			 ret, t->last_cme, t->socket_mask);
+		goto cleanup;
+	}
 	snprintf(t->command, sizeof(t->command), "AT+NSOCFG=%d,1,1", t->socket);
 	if (command(t, t->command, 5000)) goto cleanup;
 	xEventGroupClearBits(t->events, TCP_READY | CLOSED);

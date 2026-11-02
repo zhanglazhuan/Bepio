@@ -41,6 +41,7 @@ typedef struct {
 	bepio_chats_ref_t conversation[BEPIO_CHATS_MESSAGE_CAPACITY];
 	size_t message_count;
 	size_t selected;
+	uint8_t dismissed_demo; /* Only in-memory demo bubbles; reset when Chats reopens. */
 } bepio_chats_model_t;
 
 void bepio_chats_model_load(bepio_chats_model_t *model);

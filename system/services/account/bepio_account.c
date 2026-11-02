@@ -9,6 +9,12 @@
 #include <stdlib.h>
 #include <string.h>
 #include "../../../modules/pager_id.h"
+#ifdef ESP_PLATFORM
+#include "sdkconfig.h"
+#endif
+#ifndef CONFIG_BEPIO_DEVICE_ID_OVERRIDE
+#define CONFIG_BEPIO_DEVICE_ID_OVERRIDE ""
+#endif
 #define DAY 86400
 BEPIO_MUTEX_DEFINE(account_lock);
 static struct {
@@ -93,6 +99,17 @@ int bepio_account_init(void)
 		saved.next_change = 0;
 		persist();
 		if (storage_error) return storage_error;
+	}
+	const char *override_id = CONFIG_BEPIO_DEVICE_ID_OVERRIDE;
+	if (override_id[0]) {
+		if (!bepio_pager_id_valid(override_id, 24)) return ESP_ERR_INVALID_ARG;
+		if (strcmp(saved.id, override_id)) {
+			strcpy(saved.id, override_id);
+			saved.confirmed = false;
+			saved.next_change = 0;
+			persist();
+			if (storage_error) return storage_error;
+		}
 	}
 	esp_timer_create_args_t args = {.callback = checkpoint, .name = "account_save"};
 	ret = esp_timer_create(&args, &timer);

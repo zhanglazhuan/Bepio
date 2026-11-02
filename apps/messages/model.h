@@ -37,4 +37,6 @@ int messages_model_compose(messages_model_t *model, const bepio_message_payload_
 			   uint32_t draft_id, bool dirty);
 int messages_model_text(messages_model_t *model, const char *text);
 void messages_model_discard(messages_model_t *model);
+void messages_model_contact_name(const bepio_message_t *message,
+	bepio_message_box_t box, char *name, size_t capacity);
 #endif

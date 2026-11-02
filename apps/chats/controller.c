@@ -56,6 +56,22 @@ int bepio_chats_controller_play(bepio_chats_controller_t *controller, size_t ind
 	return ret ? ret : bepio_messages_voice_play(message.body);
 }
 
+int bepio_chats_controller_delete_message(bepio_chats_controller_t *controller, size_t index)
+{
+	if (!controller || !controller->active) return -EACCES;
+	if (index >= controller->model->message_count) return -ENOENT;
+	bepio_chats_ref_t ref = controller->model->conversation[index];
+	int ret;
+	if (ref.mock_index >= 0) {
+		controller->model->dismissed_demo |= 1u << ref.mock_index;
+		ret = 0;
+	} else {
+		ret = bepio_messaging_delete(ref.box, ref.id);
+	}
+	if (!ret) ret = bepio_chats_model_select(controller->model, controller->model->selected);
+	return ret;
+}
+
 int bepio_chats_controller_set_voice_input(bepio_chats_controller_t *controller,
 	const bepio_chats_voice_input_t *input, void *context)
 {

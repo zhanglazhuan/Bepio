@@ -29,6 +29,7 @@ int bepio_chats_controller_message_at(const bepio_chats_controller_t *controller
 				bepio_chats_message_t *message);
 size_t bepio_chats_controller_selected(const bepio_chats_controller_t *controller);
 int bepio_chats_controller_play(bepio_chats_controller_t *controller, size_t index);
+int bepio_chats_controller_delete_message(bepio_chats_controller_t *controller, size_t index);
 int bepio_chats_controller_set_voice_input(bepio_chats_controller_t *controller,
 	const bepio_chats_voice_input_t *input, void *context);
 int bepio_chats_controller_record_start(bepio_chats_controller_t *controller);

@@ -28,7 +28,8 @@ int bepio_mn316_driver_network_wait(int timeout_ms);
 int bepio_mn316_driver_tls(const bepio_mn316_transport_config_t *config,
 	int (*session)(void *context, const bepio_mn316_stream_t *stream), void *context);
 
-/* Startup-only probe; call before any other consumer owns the modem UART.
+/* Probe under the driver UART lock. Recover a modem left at 115200 by an
+ * interrupted TLS session and restore its normal 9600 baud.
  * Returns 0 on OK, -ETIMEDOUT on silence, -EIO on modem ERROR.
  */
 int mn316_probe(void);

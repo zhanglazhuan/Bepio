@@ -20,6 +20,7 @@ set(EXTRA_COMPONENT_DIRS
     apps/contacts
     apps/messages
     apps/chats
+    apps/notifications
 )
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 idf_build_set_property(MINIMAL_BUILD ON)

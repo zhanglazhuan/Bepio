@@ -7,6 +7,6 @@ idf_component_register(SRCS "bepio_ui.c" "bepio_ui_preferences.c" "bepio_ui_disp
                             "imgs/icon_24x24/ic_mic_24.c"
                             "imgs/icon_28x28/ic_bookmark_star_28.c"
                             "imgs/icon_40x40/ic_contacts.c" "imgs/icon_40x40/ic_mail.c"
-                            "imgs/icon_40x40/ic_settings.c" "imgs/icon_40x40/ic_voice_chat.c" INCLUDE_DIRS "." "widgets" "framework" "theme" "utils"
+                            "imgs/icon_40x40/ic_notifications.c" "imgs/icon_40x40/ic_settings.c" "imgs/icon_40x40/ic_voice_chat.c" INCLUDE_DIRS "." "widgets" "framework" "theme" "utils"
                        REQUIRES lvgl PRIV_REQUIRES esp32s3 st7789 ft6336 esp_timer esp_driver_gpio)
 target_compile_definitions(${COMPONENT_LIB} PRIVATE LV_LVGL_H_INCLUDE_SIMPLE)

@@ -1,5 +1,5 @@
 set(sources)
-set(dependencies uilv lvgl platform appmgr)
+set(dependencies uilv lvgl platform appmgr account)
 if(CONFIG_BEPIO_APP_CONTACTS)
     list(APPEND sources "app.c" "model.c" "view.c" "controller.c"
         "pages/contacts_page_common.c"

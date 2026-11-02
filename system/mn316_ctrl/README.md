@@ -11,8 +11,8 @@
 | `bepio_mn316_manager.c/.h` | 对外 API、后台连接、消息领取/PUBACK 完成、收件去重入箱 |
 | `bepio_mn316_session.c/.h` | MQTT CONNECT/SUBSCRIBE、包分段、字节流适配、有界诊断会话 |
 | `mn316_mqtt.c/.h` | 主工程 QoS 1 收发、PUBACK 匹配、确认超时、心跳 |
-| `pager_message.c/.h` | 五字段 JSON 编解码、日期/位置/长度检查 |
-| `bepio_mn316_config.h` | Host、8883 端口、本机 ID、主题规则；无密码 |
+| `pager_message.c/.h` | Version 1 八字段 JSON 编解码、日期/位置/长度检查 |
+| `bepio_mn316_config.h` | Host、8883 端口、主题规则和诊断测试对端；无本机 ID 或密码 |
 | `certs/emqx_ca.pem` | 经此前实板验证的 CA；由 CMake 嵌入固件 |
 | `emqx_local.h` | 唯一本地 MQTT 用户名/密码配置，已被 Git 忽略 |
 | `bepio_mn316_legacy.c`、`onenet.c/.h` | 保留 OneNET 模组内置 MQTT 兼容入口 |
@@ -25,6 +25,9 @@
 主固件使用账户中保存的数字设备 ID 作为 MQTT Client ID、JSON From 和收件主题。
 首次启动时默认 ID 为 eFuse MAC 的十进制表示。MQTT username 是独立的认证字段；
 新增联系人无需填写对方的 MQTT 密码，也不会替对方创建 EMQX 认证账号。
+开发板可在本地（Git 忽略的）`sdkconfig` 中设置 `CONFIG_BEPIO_DEVICE_ID_OVERRIDE="100"`；
+下次烧录启动会将该板 NVS 中的 ID 更新为 100，并订阅 `pager/demo/100/inbox`。
+量产配置禁用此覆盖项，必须为每台设备分配唯一 ID。
 
 ## 收件箱、联系人与规则
 
@@ -45,10 +48,10 @@ Contacts 新增/编辑/删除只影响本地通讯录，不产生 MQTT SUBSCRIBE
 主工程正文最多 256 UTF-8 字节，联系人设备 ID 最多 24 位且仅含数字。
 数字 ID 通过 MQTT 主题路由，接收设备或服务端须订阅对应主题；这不是短信发送。
 
-所有消息区分大小写，使用以下结构；当前无定位来源，发送 `At: null`：
+所有消息区分大小写，使用以下结构；当前无定位来源，发送 `Location: null`：
 
 ```json
-{"From":"100000000000001","To":"100000000000002","Text":"hahaha","Datetime":"2026-11-01T15:47:21Z","At":null}
+{"Version":1,"Id":"11111111-2222-4333-8444-555555555555","Type":"message","From":"100000000000001","To":"100000000000002","Text":"hahaha","Datetime":"2026-11-01T15:47:21Z","Location":null}
 ```
 
 ## 主工程的后台行为
@@ -62,9 +65,13 @@ Contacts 新增/编辑/删除只影响本地通讯录，不产生 MQTT SUBSCRIBE
 每 20 秒发送心跳，15 秒未收到 PINGRESP 则退出重连。普通失败等待 10 秒，认证失败等待 60 秒。
 PUBACK 只表示 broker 确认，不能冒充对方实际收件或已读；失败后手动重试可能重复送达。
 
-有效下行先校验 To、字段和长度，再去重、持久化到 Inbox；存储失败不发收件 PUBACK。
+有效下行先校验 To、字段和长度，再以 From 的数字 ID 查询 Contacts；匹配时保存昵称，未匹配时保存 `*`，最后去重并持久化到 Inbox；存储失败不发收件 PUBACK。
 当前 clean session 不保证断线后的补投，QoS 0 下行也无可靠重投保证。
-旧五字段协议没有独立消息 ID，以规范 JSON 的哈希去重，同秒同内容可能合并。
+消息 Id 为每条新消息生成的 UUID v4；相同内容再次发送会获得新 Id。重试和重启继续使用持久化的 Id、Datetime。接收按 From + Id 去重。
+本地数值 id 仍用于界面索引，与线上的 UUID 不同。旧存储结构保持不变；旧发件记录首次发送前补齐 UUID。
+Datetime 为 UTC 创建时间；创建时尚未校时则在首次发送前补齐，并持久化。
+Version、Type、Location 可省略，默认分别为 1、message、null；发送时总是显式输出这三个字段。显式传入的 Version 必须为 1；普通消息 Type 为 message，手机通知为 notification（见下文）。From、To、Text、Datetime 仍必填；Id 缺省时端侧自动补齐（显式空串、null 或格式错误仍拒绝）；拒绝未知字段、重复字段及旧 At 协议。
+有定位时 Location 为 {"Latitude":30.2,"Longitude":120.1,"Address":"杭州"}；无定位为 null。当前未实现应用层送达/已读回执。
 
 ## 稍后的 Contacts 实板测试
 
@@ -75,7 +82,7 @@ PUBACK 只表示 broker 确认，不能冒充对方实际收件或已读；失�
    `TLS PASS` 本身不表示 MQTT 登录、订阅或对方收件成功。
 3. PC 使用独立数字 Client ID，连接同一部署并**先成功订阅** `pager/demo/100000000000002/inbox`。
 4. Contacts 新增姓名 `PC`，设备 ID 填 `100000000000002`。Messages 选择此联系人，输入 `hahaha` 并发送。
-5. 核对 PC 实际收到五字段 JSON；设备的“已发送”仅代表 PUBACK。
+5. 核对 PC 实际收到八字段 JSON；设备的“已发送”仅代表 PUBACK。
 6. PC 向本机数字 ID 的收件主题发布 To=<本机数字ID> 的有效 JSON，
    在设备 Inbox 确认入箱。新增/删除联系人期间本机订阅仍保持不变。
 
@@ -90,3 +97,19 @@ PUBACK 只表示 broker 确认，不能冒充对方实际收件或已读；失�
 迁移前已由用户确认 PC 订阅正确主题后实际收到 `hahaha`。
 迁移版完成主/调试工程构建，以及网络解析、分段读写、认证拒绝、主题、JSON、
 QoS 1、Contacts 到队列等主机回归；尚未重新烧录验证迁移后的 FreeRTOS 行为和主工程 Contacts 收发。
+
+### 接收缺少 Id 的消息
+
+仅缺省 Id 时，按固定顺序将 `[From, To, Text, Datetime]` 编码为紧凑 JSON 数组，
+计算 SHA-256，取前 16 字节的 32 位小写十六进制，前缀 `legacy:`，作为本地消息 Id。
+使用消息自带的 Datetime，不使用接收时间；输入 JSON 的空白、字段顺序和可省略默认值不影响结果。
+已有合法 Id 沿用。正常新建发件仍用 UUID v4。接收按 From + Id 去重并持久化，沿用现有去重窗口。
+同一收发方、完全相同 Datetime 和 Text 的无 Id 消息会合并为一条；需要区分时发送方应提供 UUID。
+Location 不参与兼容 ID 计算。时间字符串参与原样计算，不做时区格式归一化。
+
+最小接收示例：
+```json
+{"From":"30962488619320","To":"101","Text":"ggg","Datetime":"2026-11-02T01:00:37Z"}
+```
+
+手机通知使用相同本机 inbox，明确设置 Type=notification，并增加 App 和可选 Title；由 manager 分流到 apps/notifications，普通消息路径不变。通知示例、更新去重和 RAM 缓存限制见 [Notifications](../../apps/notifications/README.md)。

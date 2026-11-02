@@ -1,6 +1,7 @@
 """Receive an actual MN316 uplink over verified TLS; requires pyserial."""
 import argparse
 import codecs
+import uuid
 import json
 from pathlib import Path
 import re
@@ -101,6 +102,10 @@ def main():
                     message = json.loads(body[2 + size:])
                     assert message["From"] == args.device_id and message["To"] == PEER
                     assert message["Text"] == args.text
+                    assert message["Version"] == 1 and message["Type"] == "message"
+                    assert str(uuid.UUID(message["Id"])) == message["Id"]
+                    assert uuid.UUID(message["Id"]).version == 4
+                    assert message["Location"] is None and "At" not in message
                     outcome["message"] = message
                     print("PC_RECEIVE_PASS " + json.dumps(message, ensure_ascii=False), flush=True)
                 except Exception as error:

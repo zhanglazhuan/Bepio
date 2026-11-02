@@ -82,7 +82,7 @@ void bepio_launcher_home(void)
 		bepio_application_t *app = bepio_app_manager_get_app(i);
 		if (!app || app->hidden) { continue; }
 		uint32_t color = 0x405d43;
-		const lv_image_dsc_t *icon = NULL;
+		const lv_image_dsc_t *icon = app->icon;
 		if (!strcmp(app->name, "Settings")) { icon = &ic_settings; }
 		if (!strcmp(app->name, "Contacts")) { icon = &ic_contacts; }
 		if (!strcmp(app->name, "Messages")) { icon = &ic_mail; }
